@@ -1,0 +1,22 @@
+{
+  "maxDepth": 2,
+  "includeUrlPatterns": [],
+  "excludeUrlPatterns": [],
+  "userAgent": "SmileyfaceWebCrawler/0.1",
+  "requestTimeoutMs": 10000,
+  "queueNamespace": "crawler",
+  "contentRules": {
+    "minCharacter": 80
+  },
+
+  "pages": [
+    {
+      "url": "",
+      "contentRules": {
+        "minCharacter": 80,
+        "tagName": "",
+        "classNames": ""
+      }
+    }
+  ]
+}

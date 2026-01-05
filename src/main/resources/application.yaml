@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: webcrawler
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# Elasticsearch client configuration
+elasticsearch:
+  hosts: ["http://localhost:9200"]
+  username: ""
+  password: ""
+
+# Crawler configuration
+crawler:
+  maxDepth: 1
+  includePatterns: []
+  excludePatterns: []
+  userAgent: "SmileyfaceWebCrawler/0.1 (+https://example.org)"
+  requestTimeoutMs: 10000
+  queueNamespace: "crawler"
