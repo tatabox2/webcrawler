@@ -4,7 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.smileyface.webcrawler.crawler.CrawlerProperties;
 import org.smileyface.webcrawler.crawler.LinkQueue;
+import org.smileyface.webcrawler.elasticsearch.ElasticContext;
 import org.smileyface.webcrawler.model.WebPageContent;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -34,6 +36,25 @@ public class ProcessorManager {
     private final List<Future<?>> futures = new CopyOnWriteArrayList<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ExecutorService executor;
+    private final ElasticContext elasticContext;
+
+    /**
+     * Autowired constructor providing the ElasticContext bean.
+     */
+    @Autowired
+    public ProcessorManager(ElasticContext elasticContext) {
+        this.elasticContext = Objects.requireNonNull(elasticContext, "elasticContext");
+        log.info("ElasticContext created: {}", elasticContext);
+    }
+
+    /**
+     * Default constructor for non-Spring usage (e.g., unit tests creating the manager directly).
+     * Falls back to localhost:9200.
+     */
+    public ProcessorManager() {
+        this.elasticContext = new ElasticContext("default", "localhost", 9200);
+        log.info("ElasticContext created: {}", elasticContext);
+    }
 
     public synchronized void start(int numWorkers, LinkQueue queue, CrawlerProperties properties,
                                    Consumer<WebPageContent> sink) {
@@ -50,7 +71,7 @@ public class ProcessorManager {
         executor = Executors.newVirtualThreadPerTaskExecutor();
         for (int i = 0; i < n; i++) {
             String id = "proc-" + UUID.randomUUID();
-            WebPageProcessor p = new WebPageProcessor(id, queue, properties, sink);
+            WebPageProcessor p = new WebPageProcessor(id, queue, properties, sink, elasticContext);
             processors.add(p);
             Future<?> f = executor.submit(p);
             futures.add(f);

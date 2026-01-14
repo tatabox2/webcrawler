@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 class TagNameContentRuleTest {
 
@@ -19,8 +19,8 @@ class TagNameContentRuleTest {
         TagNameContentRule ruleLower = new TagNameContentRule("h1");
         TagNameContentRule ruleUpper = new TagNameContentRule("H1");
 
-        assertTrue(ruleLower.isMatched(h1));
-        assertTrue(ruleUpper.isMatched(h1));
+        assertThat(ruleLower.isMatched(h1)).isTrue();
+        assertThat(ruleUpper.isMatched(h1)).isTrue();
     }
 
     @Test
@@ -29,14 +29,16 @@ class TagNameContentRuleTest {
         Element div = doc.selectFirst("div");
         TagNameContentRule rule = new TagNameContentRule("p");
 
-        assertFalse(rule.isMatched(div));
-        assertFalse(rule.isMatched(null));
+        assertThat(rule.isMatched(div)).isFalse();
+        assertThat(rule.isMatched(null)).isFalse();
     }
 
     @Test
     void constructor_rejectsNullOrBlankTagName() {
-        assertThrows(IllegalArgumentException.class, () -> new TagNameContentRule(null));
-        assertThrows(IllegalArgumentException.class, () -> new TagNameContentRule("   "));
+        assertThatThrownBy(() -> new TagNameContentRule(null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new TagNameContentRule("   "))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -58,9 +60,9 @@ class TagNameContentRuleTest {
         ));
 
         // Expect 3 segments: h1, first p, second p (in document order)
-        assertEquals(3, out.size());
-        assertEquals("Main", out.get(0));
-        assertEquals("First", out.get(1));
-        assertEquals("Second", out.get(2));
+        assertThat(out).hasSize(3);
+        assertThat(out.get(0)).isEqualTo("Main");
+        assertThat(out.get(1)).isEqualTo("First");
+        assertThat(out.get(2)).isEqualTo("Second");
     }
 }

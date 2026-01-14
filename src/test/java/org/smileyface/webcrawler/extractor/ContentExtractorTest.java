@@ -10,7 +10,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 class ContentExtractorTest {
 
@@ -20,8 +20,8 @@ class ContentExtractorTest {
         // Use ClassNameContentRule even though HTML is null/blank to exercise the rule path
         List<String> r1 = extractor.extractContent(null, List.of(new ClassNameContentRule("lead")));
         List<String> r2 = extractor.extractContent("   ", List.of(new ClassNameContentRule("lead")));
-        assertTrue(r1.isEmpty());
-        assertTrue(r2.isEmpty());
+        assertThat(r1).isEmpty();
+        assertThat(r2).isEmpty();
     }
 
     @Test
@@ -42,8 +42,8 @@ class ContentExtractorTest {
                 List.of(new TagNameContentRule("p"), new ClassNameContentRule("lead")) // matchAllRules
         );
 
-        assertEquals(1, out.size());
-        assertEquals("Lead paragraph", out.get(0));
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0)).isEqualTo("Lead paragraph");
     }
 
     @Test
@@ -73,19 +73,19 @@ class ContentExtractorTest {
         // Expect two segments:
         // 1) The whole section text (parent match via matchAll; children skipped so 'Inside Lead' paragraph is NOT separately captured)
         // 2) The outside lead paragraph (matchAny)
-        assertEquals(2, out.size());
-        assertTrue(out.get(0).contains("Heading"));
-        assertTrue(out.get(0).contains("Inside Lead"));
-        assertTrue(out.get(0).contains("Inside Para"));
-        assertEquals("Outside Lead", out.get(1));
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0)).contains("Heading");
+        assertThat(out.get(0)).contains("Inside Lead");
+        assertThat(out.get(0)).contains("Inside Para");
+        assertThat(out.get(1)).isEqualTo("Outside Lead");
     }
 
     @Test
     void extract_emptyRules_returnsEmptyList() {
         String html = "<html><body><p>hello</p></body></html>";
         ContentExtractor extractor = new ContentExtractor();
-        assertTrue(extractor.extractContent(html, null).isEmpty());
-        assertTrue(extractor.extractContent(html, List.of()).isEmpty());
+        assertThat(extractor.extractContent(html, null)).isEmpty();
+        assertThat(extractor.extractContent(html, List.of())).isEmpty();
     }
 
     @Test
@@ -109,10 +109,10 @@ class ContentExtractorTest {
         List<String> out = extractor.extractContent(html, List.of(mainDiv, leadByClass));
 
         // Expect text of #main as one segment (includes its children text), followed by sidebar lead paragraph
-        assertEquals(2, out.size());
-        assertTrue(out.get(0).startsWith("Title"));
-        assertTrue(out.get(0).contains("Lead paragraph"));
-        assertEquals("Sidebar lead", out.get(1));
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0)).startsWith("Title");
+        assertThat(out.get(0)).contains("Lead paragraph");
+        assertThat(out.get(1)).isEqualTo("Sidebar lead");
     }
 
     @Test
@@ -135,17 +135,17 @@ class ContentExtractorTest {
         ContentExtractor extractor = new ContentExtractor();
         List<String> out = extractor.extractContent(html, List.of(articleSection, takeP));
 
-        assertEquals(1, out.size());
-        assertTrue(out.get(0).contains("Heading"));
-        assertTrue(out.get(0).contains("Para 1"));
-        assertTrue(out.get(0).contains("Para 2"));
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0)).contains("Heading");
+        assertThat(out.get(0)).contains("Para 1");
+        assertThat(out.get(0)).contains("Para 2");
     }
 
     @Test
     void extract_realHtml_planetX_containsExpectedSegments() throws Exception {
         String html = readClasspathResource("/planet-x.html");
-        assertNotNull(html, "planet-x.html resource should be available on classpath");
-        assertTrue(html.length() > 1000, "Test HTML should be non-trivial");
+        assertThat(html).as("planet-x.html resource should be available on classpath").isNotNull();
+        assertThat(html.length()).as("Test HTML should be non-trivial").isGreaterThan(1000);
 
         // Rules: capture main heading(s) and meaningful paragraphs.
         ContentRule h1 = new TagNameContentRule("h1");
@@ -157,23 +157,23 @@ class ContentExtractorTest {
         ContentExtractor extractor = new ContentExtractor();
         List<String> out = extractor.extractContent(html, List.of(h1, h2, longParagraph));
 
-        assertFalse(out.isEmpty(), "Extractor should return some segments for real HTML");
+        assertThat(out).as("Extractor should return some segments for real HTML").isNotEmpty();
 
         // Expect to find key headings and a known content snippet
         boolean hasMainHeading = out.stream().anyMatch(s -> s.contains("Is Planet X Real?"));
         boolean hasIntroduction = out.stream().anyMatch(s -> s.equals("Introduction"));
         boolean hasNeptuneSnippet = out.stream().anyMatch(s -> s.contains("hypothetical Neptune-sized planet"));
 
-        assertTrue(hasMainHeading, "Should contain main H1 heading from Planet X page");
-        assertTrue(hasIntroduction, "Should contain 'Introduction' heading from page");
-        assertTrue(hasNeptuneSnippet, "Should contain a representative paragraph snippet");
+        assertThat(hasMainHeading).as("Should contain main H1 heading from Planet X page").isTrue();
+        assertThat(hasIntroduction).as("Should contain 'Introduction' heading from page").isTrue();
+        assertThat(hasNeptuneSnippet).as("Should contain a representative paragraph snippet").isTrue();
     }
 
     @Test
     void extract_realHtml_planetX_longParagraphs_min80_positive() throws Exception {
         String html = readClasspathResource("/planet-x.html");
-        assertNotNull(html, "planet-x.html resource should be available on classpath");
-        assertTrue(html.length() > 1000, "Test HTML should be non-trivial");
+        assertThat(html).as("planet-x.html resource should be available on classpath").isNotNull();
+        assertThat(html.length()).as("Test HTML should be non-trivial").isGreaterThan(1000);
 
         // Positive test: extract only paragraphs with at least 80 characters
         ContentRule isParagraph = new TagNameContentRule("p");
@@ -186,22 +186,23 @@ class ContentExtractorTest {
                 List.of(isParagraph, min80) // must be a <p> and >= 80 chars
         );
 
-        assertFalse(out.isEmpty(), "Should extract long paragraphs (>= 80 chars)");
+        assertThat(out).as("Should extract long paragraphs (>= 80 chars)").isNotEmpty();
 
         // All extracted segments should have length >= 80
-        assertTrue(out.stream().allMatch(s -> s != null && s.trim().length() >= 80),
-                "All extracted segments must be at least 80 characters long");
+        assertThat(out.stream().allMatch(s -> s != null && s.trim().length() >= 80))
+                .as("All extracted segments must be at least 80 characters long").isTrue();
 
         // Expect a known paragraph snippet to be included
         boolean hasNeptuneSnippet = out.stream().anyMatch(s -> s.contains("hypothetical Neptune-sized planet"));
-        assertTrue(hasNeptuneSnippet, "Should contain a representative long paragraph snippet about Neptune-sized planet");
+        assertThat(hasNeptuneSnippet)
+                .as("Should contain a representative long paragraph snippet about Neptune-sized planet").isTrue();
     }
 
     @Test
     void extract_realHtml_planetX_longParagraphs_min80_negative() throws Exception {
         String html = readClasspathResource("/planet-x.html");
-        assertNotNull(html, "planet-x.html resource should be available on classpath");
-        assertTrue(html.length() > 1000, "Test HTML should be non-trivial");
+        assertThat(html).as("planet-x.html resource should be available on classpath").isNotNull();
+        assertThat(html.length()).as("Test HTML should be non-trivial").isGreaterThan(1000);
 
         // Negative test: using only long paragraphs rule means headings like H1/H2 should not be captured
         ContentRule isParagraph = new TagNameContentRule("p");
@@ -215,14 +216,14 @@ class ContentExtractorTest {
         );
 
         // Ensure headings are NOT present
-        assertTrue(out.stream().noneMatch(s -> s.equals("Introduction")),
-                "Heading 'Introduction' should not be included by paragraph+min80 filter");
-        assertTrue(out.stream().noneMatch(s -> s.contains("Is Planet X Real?")),
-                "Main H1 title should not be included by paragraph+min80 filter");
+        assertThat(out.stream().noneMatch(s -> s.equals("Introduction")))
+                .as("Heading 'Introduction' should not be included by paragraph+min80 filter").isTrue();
+        assertThat(out.stream().noneMatch(s -> s.contains("Is Planet X Real?")))
+                .as("Main H1 title should not be included by paragraph+min80 filter").isTrue();
 
         // Ensure no short segments slipped through
-        assertTrue(out.stream().allMatch(s -> s != null && s.trim().length() >= 80),
-                "No segments shorter than 80 characters should be present");
+        assertThat(out.stream().allMatch(s -> s != null && s.trim().length() >= 80))
+                .as("No segments shorter than 80 characters should be present").isTrue();
     }
 
     private static String readClasspathResource(String path) throws Exception {

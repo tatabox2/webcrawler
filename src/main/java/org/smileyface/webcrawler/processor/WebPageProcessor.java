@@ -7,11 +7,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.smileyface.webcrawler.crawler.CrawlerProperties;
 import org.smileyface.webcrawler.crawler.LinkQueue;
+import org.smileyface.webcrawler.elasticsearch.ElasticContext;
+import org.smileyface.webcrawler.elasticsearch.ElasticRestClient;
 import org.smileyface.webcrawler.model.CrawlStatus;
 import org.smileyface.webcrawler.model.WebPageContent;
 
 import java.net.URI;
 import java.time.Instant;
+import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,6 +32,7 @@ public class WebPageProcessor implements Runnable {
     private final LinkQueue linkQueue;
     private final CrawlerProperties properties;
     private final Consumer<WebPageContent> sink;
+    private final ElasticRestClient elasticRestClient; // optional
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private final AtomicLong processedCount = new AtomicLong(0);
@@ -39,11 +43,16 @@ public class WebPageProcessor implements Runnable {
     private volatile Instant startedAt;
     private volatile Instant finishedAt;
 
-    public WebPageProcessor(String id, LinkQueue linkQueue, CrawlerProperties properties, Consumer<WebPageContent> sink) {
+    public WebPageProcessor(String id,
+                             LinkQueue linkQueue,
+                             CrawlerProperties properties,
+                             Consumer<WebPageContent> sink,
+                             ElasticContext elasticContext) {
         this.id = Objects.requireNonNull(id, "id");
         this.linkQueue = Objects.requireNonNull(linkQueue, "linkQueue");
         this.properties = Objects.requireNonNull(properties, "properties");
         this.sink = Objects.requireNonNull(sink, "sink");
+        this.elasticRestClient = (elasticContext == null) ? null : new ElasticRestClient(elasticContext);
     }
 
     public void stop() {
@@ -123,7 +132,7 @@ public class WebPageProcessor implements Runnable {
         log.info("Processor {} state {} -> {}", id, old, newState);
     }
 
-    private void processUrl(String url) {
+    private void processUrl(String url) throws Exception {
         Instant start = Instant.now();
         int httpStatus = -1;
         String contentType = null;
@@ -170,6 +179,24 @@ public class WebPageProcessor implements Runnable {
             w.setContentLength(text != null ? text.length() : 0);
             w.setFetchDurationMs(durationMs(start, Instant.now()));
             sink.accept(w);
+            // Index the document into Elasticsearch if configured and only on successful population
+            String indexName = properties.getElasticIndexName();
+            if (elasticRestClient != null && indexName != null && !indexName.isBlank()) {
+                try {
+                    String assignedId = elasticRestClient.indexDocument(indexName, w);
+                    if (assignedId != null && (w.getId() == null || w.getId().isBlank())) {
+                        w.setId(assignedId);
+                    }
+                } catch (IOException e) {
+                    String msg = "Processor %s failed to index document for url=%s to index=%s - %s".formatted(id, url, indexName, e.getMessage());
+                    log.error(msg, e.getMessage());
+                    throw new IOException(msg, e);
+                } catch (Exception e) {
+                    String msg = "Processor %s unexpected error indexing document for url=%s to index=%s".formatted(id, url, indexName);
+                    log.error(msg, e);
+                    throw new Exception(msg, e);
+                }
+            }
         } catch (Exception e) {
             WebPageContent w = new WebPageContent();
             w.setUrl(url);
@@ -180,6 +207,7 @@ public class WebPageProcessor implements Runnable {
             w.setContentType(contentType);
             w.setFetchDurationMs(durationMs(start, Instant.now()));
             sink.accept(w);
+            throw new Exception(e);
         }
     }
 

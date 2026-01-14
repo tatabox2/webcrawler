@@ -25,8 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * Unit tests for CrawlerService using a lightweight in-memory HTTP server
@@ -83,7 +82,7 @@ class CrawlerServiceTest {
                 "http://localhost:" + port + "/a",
                 "http://localhost:" + port + "/b"
         );
-        assertEquals(expected, enqueued);
+        assertThat(enqueued).isEqualTo(expected);
     }
 
     @Test
@@ -125,7 +124,7 @@ class CrawlerServiceTest {
                 base + "/a2",
                 base + "/b1"
         );
-        assertEquals(expected, enqueued);
+        assertThat(enqueued).isEqualTo(expected);
     }
 
     @Test
@@ -166,9 +165,9 @@ class CrawlerServiceTest {
                 base + "/a",
                 base + "/a1"
         );
-        assertEquals(expected, enqueued);
+        assertThat(enqueued).isEqualTo(expected);
         // Ensure no b* links slipped through
-        assertTrue(enqueued.stream().noneMatch(u -> u.contains("/b")));
+        assertThat(enqueued.stream().noneMatch(u -> u.contains("/b"))).isTrue();
     }
 
     // ----------------- helpers -----------------

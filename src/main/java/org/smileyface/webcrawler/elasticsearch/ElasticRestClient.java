@@ -190,4 +190,28 @@ public class ElasticRestClient {
             throw e;
         }
     }
+
+    /**
+     * Fetches a document by id from the specified index and deserializes it into WebPageContent.
+     * Returns null if the document is not found.
+     */
+    public WebPageContent getDocument(String indexName, String id) throws IOException {
+        if (indexName == null || indexName.isBlank()) {
+            throw new IllegalArgumentException("indexName must not be null/blank");
+        }
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id must not be null/blank");
+        }
+        try {
+            var resp = client.get(b -> b.index(indexName).id(id), WebPageContent.class);
+            if(resp == null) {
+                return null;
+            } else {
+                resp.source().setId(resp.id());
+                return resp.source();
+            }
+        } catch (ElasticsearchException e) {
+            throw e;
+        }
+    }
 }

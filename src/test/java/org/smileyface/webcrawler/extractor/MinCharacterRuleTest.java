@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 class MinCharacterRuleTest {
 
@@ -16,10 +16,10 @@ class MinCharacterRuleTest {
         Document doc = Jsoup.parse("<p>Hello World</p>");
         Element p = doc.selectFirst("p");
         MinCharacterRule rule = new MinCharacterRule(11); // "Hello World" -> 11
-        assertTrue(rule.isMatched(p));
+        assertThat(rule.isMatched(p)).isTrue();
 
         MinCharacterRule rule2 = new MinCharacterRule(12);
-        assertFalse(rule2.isMatched(p));
+        assertThat(rule2.isMatched(p)).isFalse();
     }
 
     @Test
@@ -27,10 +27,10 @@ class MinCharacterRuleTest {
         Document doc = Jsoup.parse("<div>   abc  </div>");
         Element div = doc.selectFirst("div");
         MinCharacterRule rule = new MinCharacterRule(3);
-        assertTrue(rule.isMatched(div));
+        assertThat(rule.isMatched(div)).isTrue();
 
         MinCharacterRule higher = new MinCharacterRule(4);
-        assertFalse(higher.isMatched(div));
+        assertThat(higher.isMatched(div)).isFalse();
     }
 
     @Test
@@ -38,7 +38,7 @@ class MinCharacterRuleTest {
         Document doc = Jsoup.parse("<span>  </span>");
         Element span = doc.selectFirst("span");
         MinCharacterRule rule = new MinCharacterRule(-5);
-        assertTrue(rule.isMatched(span), "Negative min should be treated as zero, matching even empty text");
+        assertThat(rule.isMatched(span)).as("Negative min should be treated as zero, matching even empty text").isTrue();
     }
 
     @Test
@@ -59,8 +59,8 @@ class MinCharacterRuleTest {
         List<String> out = extractor.extractContent(html, List.of(rule));
 
         // Expect two segments: #b and the <section id='c'> (its text includes child text and should match, skipping child)
-        assertEquals(2, out.size());
-        assertEquals("this one should be extracted", out.get(0));
-        assertTrue(out.get(1).contains("child long enough indeed"));
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0)).isEqualTo("this one should be extracted");
+        assertThat(out.get(1)).contains("child long enough indeed");
     }
 }
