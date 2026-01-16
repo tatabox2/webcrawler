@@ -15,6 +15,8 @@ import co.elastic.clients.elasticsearch.core.IndexResponse;
 import co.elastic.clients.transport.ElasticsearchTransport;
 import co.elastic.clients.transport.rest_client.RestClientTransport;
 import org.apache.http.HttpHost;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.client.RestClient;
 import org.smileyface.webcrawler.model.WebPageContent;
 // Note: Not a Spring-managed bean by default; construct with ElasticContext where needed
@@ -29,6 +31,7 @@ import java.util.List;
  */
 public class ElasticRestClient {
 
+    private static final Logger log = LogManager.getLogger();
     private final ElasticsearchClient client;
 
     /**
@@ -39,6 +42,8 @@ public class ElasticRestClient {
         if (context == null) {
             throw new IllegalArgumentException("ElasticContext must not be null");
         }
+
+        log.debug("ElasticRestClient initializing on {}:{}", context.getAddress(), context.getPort());
         RestClient lowLevel = RestClient.builder(new HttpHost(context.getAddress(), context.getPort(), "http"))
                 .build();
         ElasticsearchTransport transport = new RestClientTransport(lowLevel, new JacksonJsonpMapper());
@@ -56,6 +61,7 @@ public class ElasticRestClient {
             boolean exists = client.indices().exists(ExistsRequest.of(b -> b.index(indexName))).value();
             if (exists) return false;
             client.indices().create(CreateIndexRequest.of(b -> b.index(indexName)));
+            log.info("Index {} created", indexName);
             return true;
         } catch (ElasticsearchException e) {
             throw e;
@@ -71,6 +77,7 @@ public class ElasticRestClient {
             boolean exists = client.indices().exists(ExistsRequest.of(b -> b.index(indexName))).value();
             if (exists) return false;
             client.indices().create(b -> b.index(indexName).withJson(new StringReader(jsonBody)));
+            log.info("Index {} created with settings/mappings: {}", indexName, jsonBody);
             return true;
         } catch (ElasticsearchException e) {
             throw e;
@@ -86,6 +93,7 @@ public class ElasticRestClient {
                     .index(indexName)
                     .withJson(new StringReader(settingsJson))
             ));
+            log.info("Index {} updated with settings: {}", indexName, settingsJson);
         } catch (ElasticsearchException e) {
             throw e;
         }
@@ -100,6 +108,7 @@ public class ElasticRestClient {
             boolean exists = client.indices().exists(ExistsRequest.of(b -> b.index(indexName))).value();
             if (!exists) return false;
             client.indices().delete(DeleteIndexRequest.of(b -> b.index(indexName)));
+            log.info("Index {} deleted", indexName);
             return true;
         } catch (ElasticsearchException e) {
             throw e;
@@ -114,6 +123,7 @@ public class ElasticRestClient {
     public void createAlias(String indexName, String aliasName) throws IOException {
         try {
             client.indices().putAlias(PutAliasRequest.of(b -> b.index(indexName).name(aliasName)));
+            log.info("Alias {} created", aliasName);
         } catch (ElasticsearchException e) {
             throw e;
         }
@@ -125,6 +135,7 @@ public class ElasticRestClient {
     public void deleteAlias(String indexName, String aliasName) throws IOException {
         try {
             client.indices().deleteAlias(DeleteAliasRequest.of(b -> b.index(indexName).name(aliasName)));
+            log.info("Alias {} deleted", aliasName);
         } catch (ElasticsearchException e) {
             throw e;
         }
@@ -140,11 +151,13 @@ public class ElasticRestClient {
         try {
             if (templateJson == null || templateJson.isBlank()) {
                 client.indices().putIndexTemplate(PutIndexTemplateRequest.of(b -> b.name(templateName).indexPatterns(indexPatterns)));
+                log.info("Template {} created", templateName);
             } else {
                 client.indices().putIndexTemplate(b -> b
                         .name(templateName)
                         .withJson(new StringReader(templateJson))
                 );
+                log.info("Template {} updated", templateName);
             }
         } catch (ElasticsearchException e) {
             throw e;
@@ -157,6 +170,7 @@ public class ElasticRestClient {
     public void deleteTemplate(String templateName) throws IOException {
         try {
             client.indices().deleteIndexTemplate(DeleteIndexTemplateRequest.of(b -> b.name(templateName)));
+            log.info("Template {} deleted", templateName);
         } catch (ElasticsearchException e) {
             throw e;
         }
@@ -185,6 +199,7 @@ public class ElasticRestClient {
             IndexResponse resp = (id == null || id.isBlank())
                     ? client.index(b -> b.index(indexName).document(document))
                     : client.index(b -> b.index(indexName).id(id).document(document));
+            log.info("Index with id: {}, document: {}", resp.id(), document);
             return resp.id();
         } catch (ElasticsearchException e) {
             throw e;
@@ -205,9 +220,11 @@ public class ElasticRestClient {
         try {
             var resp = client.get(b -> b.index(indexName).id(id), WebPageContent.class);
             if(resp == null) {
+                log.info("Document with id: {} not found", id);
                 return null;
             } else {
                 resp.source().setId(resp.id());
+                log.info("get document with id: {}", resp.id());
                 return resp.source();
             }
         } catch (ElasticsearchException e) {

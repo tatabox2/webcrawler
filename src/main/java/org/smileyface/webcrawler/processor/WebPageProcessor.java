@@ -32,6 +32,7 @@ public class WebPageProcessor implements Runnable {
     private final LinkQueue linkQueue;
     private final CrawlerProperties properties;
     private final Consumer<WebPageContent> sink;
+    private final ElasticContext elasticContext;
     private final ElasticRestClient elasticRestClient; // optional
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
@@ -52,7 +53,25 @@ public class WebPageProcessor implements Runnable {
         this.linkQueue = Objects.requireNonNull(linkQueue, "linkQueue");
         this.properties = Objects.requireNonNull(properties, "properties");
         this.sink = Objects.requireNonNull(sink, "sink");
+        this.elasticContext = elasticContext;
         this.elasticRestClient = (elasticContext == null) ? null : new ElasticRestClient(elasticContext);
+    }
+
+    /**
+     * Builds the Elasticsearch index name by concatenating the crawler indexPrefix and the tenantId
+     * from the ElasticContext with a dash in between: prefix + "-" + tenantId.
+     *
+     * If the prefix is null/blank, returns null to signal "do not index".
+     * If the context is null or has a blank tenant id, "default" is used as the tenant id.
+     */
+    public static String getIndexName(CrawlerProperties props, ElasticContext ctx) {
+        if (props == null) return null;
+        String prefix = props.getIndexPrefix();
+        if (prefix == null || prefix.isBlank()) return null;
+        String tenant = (ctx == null || ctx.getTenantId() == null || ctx.getTenantId().isBlank())
+                ? "default"
+                : ctx.getTenantId();
+        return prefix + "-" + tenant;
     }
 
     public void stop() {
@@ -180,7 +199,7 @@ public class WebPageProcessor implements Runnable {
             w.setFetchDurationMs(durationMs(start, Instant.now()));
             sink.accept(w);
             // Index the document into Elasticsearch if configured and only on successful population
-            String indexName = properties.getElasticIndexName();
+            String indexName = getIndexName(properties, elasticContext);
             if (elasticRestClient != null && indexName != null && !indexName.isBlank()) {
                 try {
                     String assignedId = elasticRestClient.indexDocument(indexName, w);

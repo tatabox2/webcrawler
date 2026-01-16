@@ -1,7 +1,7 @@
 package org.smileyface.webcrawler.processor;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.smileyface.webcrawler.crawler.CrawlerProperties;
 import org.smileyface.webcrawler.crawler.LinkQueue;
 import org.smileyface.webcrawler.elasticsearch.ElasticContext;
@@ -30,7 +30,7 @@ import java.util.function.Consumer;
 @Component
 public class ProcessorManager {
 
-    private static final Logger log = LoggerFactory.getLogger(ProcessorManager.class);
+    private static final Logger log = LogManager.getLogger();
 
     private final List<WebPageProcessor> processors = new CopyOnWriteArrayList<>();
     private final List<Future<?>> futures = new CopyOnWriteArrayList<>();

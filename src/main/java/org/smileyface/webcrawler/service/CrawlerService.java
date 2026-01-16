@@ -38,7 +38,7 @@ public class CrawlerService {
     private final LinkQueue linkQueue;
     private final CrawlerProperties properties;
     private ProcessorManager processorManager; // optional when created manually in tests
-    private ElasticContext elasticContext;     // instantiated from application.yaml when using Spring
+    private ElasticContext elasticContext;     // instantiated from application.yml when using Spring
 
     public CrawlerService(LinkQueue linkQueue, CrawlerProperties properties) {
         this.linkQueue = linkQueue;

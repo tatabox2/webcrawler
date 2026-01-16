@@ -5,7 +5,7 @@
   "userAgent": "SmileyfaceWebCrawler/0.1",
   "requestTimeoutMs": 10000,
   "queueNamespace": "crawler",
-  "elasticIndexName": "crawler-main",
+  "indexPrefix": "crawler-main",
   "contentRules": {
     "minCharacter": 80
   },

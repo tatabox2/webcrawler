@@ -130,10 +130,12 @@ class ProcessorManagerTest {
         props.setRequestTimeoutMs(5000);
         String indexName = null;
         if (dockerAvailable) {
-            indexName = "wpc-test-batch";
+            // Use prefix and derive full index name with tenant id to match WebPageProcessor.getIndexName()
+            String prefix = "wpc-test-batch";
+            props.setIndexPrefix(prefix);
+            indexName = prefix + "-" + elasticContext.getTenantId();
             try { es.deleteIndex(indexName); } catch (Exception ignored) {}
             es.createIndex(indexName);
-            props.setElasticIndexName(indexName);
         }
 
         mgr.start(2, queue, props, sink::add);
@@ -191,10 +193,10 @@ class ProcessorManagerTest {
         props.setRequestTimeoutMs(5000);
         String indexName = null;
         if (dockerAvailable) {
-            indexName = "wpc-test-planetx";
-            try { es.deleteIndex(indexName); } catch (Exception ignored) {}
+            String prefix = "web-crawler";
+            props.setIndexPrefix(prefix);
+            indexName = prefix + "-" + elasticContext.getTenantId();
             es.createIndex(indexName);
-            props.setElasticIndexName(indexName);
         }
 
         mgr.start(1, queue, props, sink::add);

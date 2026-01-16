@@ -58,8 +58,8 @@ public class CrawlerProperties {
     /** Cached generic (global) rules list built from {@link #contentRules}. */
     private List<ContentRule> genericRules = new ArrayList<>();
 
-    /** Optional Elasticsearch index name for storing crawled page contents. */
-    private String elasticIndexName;
+    /** Optional index prefix for storing crawled page contents in Elasticsearch. */
+    private String indexPrefix;
 
     /**
      * Loads default values from classpath resource WebCrawlerConfig.json if available.
@@ -77,7 +77,10 @@ public class CrawlerProperties {
                 if (cfg.userAgent != null && !cfg.userAgent.isBlank()) this.userAgent = cfg.userAgent;
                 if (cfg.requestTimeoutMs != null && cfg.requestTimeoutMs > 0) this.requestTimeoutMs = cfg.requestTimeoutMs;
                 if (cfg.queueNamespace != null && !cfg.queueNamespace.isBlank()) this.queueNamespace = cfg.queueNamespace;
-                if (cfg.elasticIndexName != null && !cfg.elasticIndexName.isBlank()) this.elasticIndexName = cfg.elasticIndexName;
+                // Load new field 'indexPrefix'
+                if (cfg.indexPrefix != null && !cfg.indexPrefix.isBlank()) {
+                    this.indexPrefix = cfg.indexPrefix;
+                }
                 // Content rules and pages
                 this.contentRules = cfg.contentRules;
                 if (cfg.pages != null) this.pages = new ArrayList<>(cfg.pages);
@@ -157,12 +160,12 @@ public class CrawlerProperties {
         rebuildPageRulesMap();
     }
 
-    public String getElasticIndexName() {
-        return elasticIndexName;
+    public String getIndexPrefix() {
+        return indexPrefix;
     }
 
-    public void setElasticIndexName(String elasticIndexName) {
-        this.elasticIndexName = (elasticIndexName == null || elasticIndexName.isBlank()) ? null : elasticIndexName;
+    public void setIndexPrefix(String indexPrefix) {
+        this.indexPrefix = (indexPrefix == null || indexPrefix.isBlank()) ? null : indexPrefix;
     }
 
     /**
@@ -234,7 +237,8 @@ public class CrawlerProperties {
         public String userAgent;
         public Integer requestTimeoutMs;
         public String queueNamespace;
-        public String elasticIndexName;
+        // Preferred field name for ES index prefix
+        public String indexPrefix;
         public ContentRulesConfig contentRules;
         public List<PageConfig> pages;
     }
