@@ -18,7 +18,7 @@ class ContentExtractorTest {
     void extract_nullOrBlankHtml_returnsEmptyList() {
         ContentExtractor extractor = new ContentExtractor();
         // Use ClassNameContentRule even though HTML is null/blank to exercise the rule path
-        List<String> r1 = extractor.extractContent(null, List.of(new ClassNameContentRule("lead")));
+        List<String> r1 = extractor.extractContent((String) null, List.of(new ClassNameContentRule("lead")));
         List<String> r2 = extractor.extractContent("   ", List.of(new ClassNameContentRule("lead")));
         assertThat(r1).isEmpty();
         assertThat(r2).isEmpty();

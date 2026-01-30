@@ -46,14 +46,43 @@ public final class ContentExtractor {
         if (html == null || html.isBlank()) {
             return List.of();
         }
+        Document doc = Jsoup.parse(html);
+        Element root = doc.body() != null ? doc.body() : doc;
+        return extractContent(root, matchAnyRules, matchAllRules);
+    }
+
+    /**
+     * Extracts content starting from the provided root element by applying the given rules.
+     * This overload accepts a Jsoup {@link Element} instead of an HTML string.
+     *
+     * @param root  the root element to traverse (may be null)
+     * @param rules the set of rules to apply (may be null/empty). If null or empty, returns an empty list.
+     * @return a list of extracted text segments (possibly empty), in document order
+     */
+    public List<String> extractContent(Element root, Collection<ContentRule> rules) {
+        return extractContent(root, rules, null);
+    }
+
+    /**
+     * Extracts content starting from the provided root element and applies the given rule sets.
+     *
+     * @param root           the root element to traverse (may be null)
+     * @param matchAnyRules  rules where matching any one is sufficient (may be null/empty)
+     * @param matchAllRules  rules where matching all is required (may be null/empty)
+     * @return extracted text segments in document order (possibly empty)
+     */
+    public List<String> extractContent(Element root,
+                                       Collection<ContentRule> matchAnyRules,
+                                       Collection<ContentRule> matchAllRules) {
+        if (root == null) {
+            return List.of();
+        }
         boolean anyEmpty = (matchAnyRules == null || matchAnyRules.isEmpty());
         boolean allEmpty = (matchAllRules == null || matchAllRules.isEmpty());
         if (anyEmpty && allEmpty) {
             return List.of();
         }
 
-        Document doc = Jsoup.parse(html);
-        Element root = doc.body() != null ? doc.body() : doc;
         List<String> out = new ArrayList<>();
         traverse(root, matchAnyRules, matchAllRules, out, false);
         return out;
