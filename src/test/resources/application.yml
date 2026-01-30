@@ -1,0 +1,16 @@
+crawler:
+  max-depth: 1
+  user-agent: "TestBot/1.0"
+  request-timeout-ms: 5000
+  queue-namespace: "test"
+  queue:
+    type: "redis"
+  workerCount: 20
+
+spring:
+  main:
+    allow-bean-definition-overriding: true
+
+logging:
+  level:
+    root: DEBUG
