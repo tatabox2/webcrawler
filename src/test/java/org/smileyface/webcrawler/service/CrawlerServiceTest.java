@@ -1,29 +1,48 @@
 package org.smileyface.webcrawler.service;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.json.jackson.JacksonJsonpMapper;
+import co.elastic.clients.transport.ElasticsearchTransport;
+import co.elastic.clients.transport.rest_client.RestClientTransport;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.elasticsearch.client.RestClient;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.smileyface.webcrawler.crawler.CrawlerProperties;
+import org.smileyface.webcrawler.crawler.InMemoryLinkQueue;
 import org.smileyface.webcrawler.crawler.LinkQueue;
 import org.smileyface.webcrawler.config.BeanConfig;
+import org.smileyface.webcrawler.crawler.RedisLinkQueue;
+import org.smileyface.webcrawler.elasticsearch.ElasticContext;
+import org.smileyface.webcrawler.elasticsearch.ElasticRestClient;
+import org.smileyface.webcrawler.processor.ProcessorManager;
+import org.smileyface.webcrawler.testutil.ElasticsearchTestContainer;
+import org.smileyface.webcrawler.util.CrawlerUtils;
+import org.smileyface.webcrawler.model.WebPageContent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.testcontainers.containers.GenericContainer;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -33,25 +52,125 @@ import static org.assertj.core.api.Assertions.*;
  */
 @SpringJUnitConfig(classes = {BeanConfig.class,
         CrawlerServiceTest.TestPropsConfig.class})
+@TestPropertySource( properties = {"crawler.workerCount=40"},
+locations = "classpath:application.yml")
 class CrawlerServiceTest {
 
+    Logger logger = LogManager.getLogger(CrawlerServiceTest.class);
+
     private HttpServer server;
+    private static boolean dockerAvailable;
+    private static RestClient lowLevel;
+    private static ElasticsearchClient validationClient;
+    private static ElasticRestClient es;
+    private static ElasticContext elasticContext;
+    private static GenericContainer<?> redisContainer;
+
+    @Autowired
+    private CrawlerProperties crawlerProperties;
 
     @Autowired
     private LinkQueue queue;
 
+    @Autowired
+    private CrawlerService crawler;
+
+    @BeforeAll
+    static void setup() {
+        try {
+            ElasticsearchTestContainer.start();
+            dockerAvailable = true;
+
+            String hostPort = ElasticsearchTestContainer.getHttpHostAddress(); // host:port
+            lowLevel = RestClient.builder(org.apache.http.HttpHost.create("http://" + hostPort)).build();
+            ElasticsearchTransport transport = new RestClientTransport(lowLevel, new JacksonJsonpMapper());
+            validationClient = new ElasticsearchClient(transport);
+            String[] parts = hostPort.split(":");
+            String host = parts[0];
+            int port = Integer.parseInt(parts[1]);
+            elasticContext = new ElasticContext(UUID.randomUUID().toString(), host, port);
+            es = new ElasticRestClient(elasticContext);
+        } catch (Throwable t) {
+            dockerAvailable = false;
+        }
+
+        // Start Redis Testcontainer independently; if this fails, we will fall back to in-memory queue
+        try {
+            redisContainer = new GenericContainer<>("redis:7.2.4").withExposedPorts(6379);
+            redisContainer.start();
+        } catch (Throwable t) {
+            // leave redisContainer as null; tests will still pass using in-memory queue
+        }
+    }
+
     @TestConfiguration
     @EnableConfigurationProperties(CrawlerProperties.class)
-    static class TestPropsConfig { }
+    static class TestPropsConfig {
+
+        @Bean
+        @Primary
+        ElasticContext elasticContext() {
+            return elasticContext;
+        }
+
+        @Bean
+        public ProcessorManager processorManager() {
+            return new ProcessorManager(elasticContext);
+        }
+
+        @Bean
+        public CrawlerService crawler(LinkQueue queue, ProcessorManager processorManager, CrawlerProperties crawlerProperties) {
+            return new CrawlerService(queue, crawlerProperties,processorManager, elasticContext);
+        }
+
+        /**
+         * Override LinkQueue bean to use RedisLinkQueue backed by Testcontainers Redis when available.
+         * Falls back to InMemoryLinkQueue if Redis container failed to start.
+         */
+        @Bean
+        @Primary
+        public LinkQueue linkQueue(CrawlerProperties properties) {
+            if (redisContainer != null && redisContainer.isRunning()) {
+                String host = redisContainer.getHost();
+                Integer port = redisContainer.getMappedPort(6379);
+                LettuceConnectionFactory cf = new LettuceConnectionFactory(host, port);
+                cf.afterPropertiesSet();
+                StringRedisTemplate template = new StringRedisTemplate(cf);
+                // Use a distinct namespace to avoid clashes across test runs
+                properties.setQueueNamespace("test:" + UUID.randomUUID());
+                return new RedisLinkQueue(template, properties);
+            }
+            return new InMemoryLinkQueue();
+        }
+    }
 
     @AfterEach
     void tearDown() {
         if (server != null) server.stop(0);
     }
 
+    @AfterAll
+    static void stopContainers() {
+        if (redisContainer != null) {
+            try {
+                redisContainer.stop();
+            } finally {
+                redisContainer = null;
+            }
+        }
+        // Keep Elasticsearch container lifecycle as-is; it will be cleaned by JVM shutdown if not explicitly stopped
+    }
+
     @BeforeEach
     void setUpQueue() {
         if (queue != null) queue.init();
+    }
+
+    private static Stream<Arguments> testDataProvider() {
+        return Stream.of(
+                    Arguments.arguments( "planet-x.html", ".*\\.nasa.gov/.*"),
+                    Arguments.arguments("t23389-topic.html", ".*\\.666forum.com/.*")
+                );
     }
 
     @Test
@@ -70,6 +189,7 @@ class CrawlerServiceTest {
         int port = startServer(pages);
         String entry = "http://localhost:" + port + "/";
 
+        // This is delibrately only testing the linkQueue.  Doesn't test process manager
         CrawlerProperties props = new CrawlerProperties();
         props.setMaxDepth(0);
         CrawlerService crawler = new CrawlerService(queue, props);
@@ -108,7 +228,7 @@ class CrawlerServiceTest {
 
         int port = startServer(pages);
         String base = "http://localhost:" + port;
-
+        // Delibrately,this only test the linkQueue.  Doesn't test process manager
         CrawlerProperties props = new CrawlerProperties();
         props.setMaxDepth(1);
         CrawlerService crawler = new CrawlerService(queue, props);
@@ -150,6 +270,7 @@ class CrawlerServiceTest {
         int port = startServer(pages);
         String base = "http://localhost:" + port;
 
+        // Delibrately,this only test the linkQueue.  Doesn't test process manager
         CrawlerProperties props = new CrawlerProperties();
         props.setMaxDepth(1);
         // Include only URLs containing "/a", but exclude those ending with "/a2"
@@ -168,6 +289,58 @@ class CrawlerServiceTest {
         assertThat(enqueued).isEqualTo(expected);
         // Ensure no b* links slipped through
         assertThat(enqueued.stream().noneMatch(u -> u.contains("/b"))).isTrue();
+    }
+
+    @ParameterizedTest (name="file={0}, includedPattern={1}")
+    @MethodSource ("testDataProvider")
+    void crawl_maxDepth0_withPlanetXResource_enqueuesNoExternalLinks(String fileName, String includedPattern) throws Exception {
+        // Load the large HTML from test resources and serve it at the root path
+        String planetX;
+        try (var is = getClass().getResourceAsStream("/" + fileName)) {
+            assertThat(is).as("planet-x.html should be on classpath").isNotNull();
+            planetX = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        Map<String, String> pages = new LinkedHashMap<>();
+        pages.put("/", planetX);
+
+        int port = startServer(pages);
+        String base = "http://localhost:" + port;
+
+        crawlerProperties.setMaxDepth(0);
+        int minCharacters = 1000;
+        CrawlerProperties.ContentRulesConfig contentRulesConfig = new CrawlerProperties.ContentRulesConfig(minCharacters, "", "");
+        CrawlerProperties.PageConfig pageConfig = new CrawlerProperties.PageConfig("^http://localhost.*", contentRulesConfig);
+        pageConfig.matchAll = true;
+        crawlerProperties.addPageConfig(pageConfig);
+
+        // Only accept localhost links so we don't enqueue any external URLs from the sample HTML
+        crawlerProperties.setIncludeUrlPatterns(List.of(includedPattern));
+        crawlerProperties.setMaxDepth(1);
+
+        crawler.crawl(base, true);
+
+        Set<String> enqueued = drain(queue);
+        // The sample HTML does not contain localhost links, so nothing should be enqueued
+        logger.info("queue size: {}", enqueued.size());
+        assertThat(enqueued).isEmpty();
+
+        // Validate documents indexed into Elasticsearch and check the contentLength field
+        if (dockerAvailable) {
+            String indexName = CrawlerUtils.getIndexName(crawlerProperties, elasticContext);
+            assertThat(indexName).isNotBlank();
+
+            // Poll a few times as indexing can be asynchronous
+            List<WebPageContent> docs = List.of();
+            for (int i = 0; i < 10; i++) {
+                docs = es.searchAll(indexName);
+                if (!docs.isEmpty()) break;
+                Thread.sleep(200L);
+            }
+            assertThat(docs).isNotEmpty();
+            // Ensure at least one document has a non-zero contentLength
+            assertThat(docs.stream().allMatch(d -> d.getContentLength() > minCharacters)).isTrue();
+        }
     }
 
     // ----------------- helpers -----------------

@@ -12,6 +12,8 @@ import co.elastic.clients.elasticsearch.indices.PutIndexTemplateRequest;
 import co.elastic.clients.elasticsearch.indices.PutIndicesSettingsRequest;
 import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
 import co.elastic.clients.elasticsearch.core.IndexResponse;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.transport.ElasticsearchTransport;
 import co.elastic.clients.transport.rest_client.RestClientTransport;
 import org.apache.http.HttpHost;
@@ -227,6 +229,34 @@ public class ElasticRestClient {
                 log.info("get document with id: {}", resp.id());
                 return resp.source();
             }
+        } catch (ElasticsearchException e) {
+            throw e;
+        }
+    }
+
+    /**
+     * Executes a match_all search on the specified index and returns all hits deserialized as WebPageContent.
+     * Intended primarily for validation in tests.
+     */
+    public List<WebPageContent> searchAll(String indexName) throws IOException {
+        if (indexName == null || indexName.isBlank()) {
+            throw new IllegalArgumentException("indexName must not be null/blank");
+        }
+        try {
+            SearchResponse<WebPageContent> resp = client.search(s -> s
+                            .index(indexName)
+                            .query(q -> q.matchAll(m -> m))
+                            .size(1000),
+                    WebPageContent.class);
+            List<WebPageContent> out = new java.util.ArrayList<>();
+            for (Hit<WebPageContent> h : resp.hits().hits()) {
+                WebPageContent src = h.source();
+                if (src != null) {
+                    src.setId(h.id());
+                    out.add(src);
+                }
+            }
+            return out;
         } catch (ElasticsearchException e) {
             throw e;
         }

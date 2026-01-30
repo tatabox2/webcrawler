@@ -6,17 +6,20 @@
   "requestTimeoutMs": 10000,
   "queueNamespace": "crawler",
   "indexPrefix": "crawler-main",
-  "contentRules": {
-    "minCharacter": 80
-  },
 
   "pages": [
     {
-      "url": "",
+      "urlPattern": "^https://www.666forum.com.*",
+      "matchAll": true,
       "contentRules": {
-        "minCharacter": 80,
-        "tagName": "",
-        "classNames": ""
+        "minCharacter": 600,
+        "tagName": "span"
+      }
+    },
+    {
+      "urlPattern": "^https://science.nasa.gov.*",
+      "contentRules": {
+        "minCharacter": 600
       }
     }
   ]

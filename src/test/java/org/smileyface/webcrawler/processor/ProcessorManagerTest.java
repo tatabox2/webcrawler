@@ -17,6 +17,7 @@ import org.smileyface.webcrawler.model.CrawlStatus;
 import org.smileyface.webcrawler.model.WebPageContent;
 import org.smileyface.webcrawler.config.BeanConfig;
 import org.smileyface.webcrawler.testutil.ElasticsearchTestContainer;
+import org.smileyface.webcrawler.util.CrawlerUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -131,9 +132,7 @@ class ProcessorManagerTest {
         String indexName = null;
         if (dockerAvailable) {
             // Use prefix and derive full index name with tenant id to match WebPageProcessor.getIndexName()
-            String prefix = "wpc-test-batch";
-            props.setIndexPrefix(prefix);
-            indexName = prefix + "-" + elasticContext.getTenantId();
+            indexName = CrawlerUtils.getIndexName(props, elasticContext);
             try { es.deleteIndex(indexName); } catch (Exception ignored) {}
             es.createIndex(indexName);
         }
@@ -193,9 +192,7 @@ class ProcessorManagerTest {
         props.setRequestTimeoutMs(5000);
         String indexName = null;
         if (dockerAvailable) {
-            String prefix = "web-crawler";
-            props.setIndexPrefix(prefix);
-            indexName = prefix + "-" + elasticContext.getTenantId();
+            indexName = CrawlerUtils.getIndexName(props, elasticContext);
             es.createIndex(indexName);
         }
 

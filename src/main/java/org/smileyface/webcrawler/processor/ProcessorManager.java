@@ -7,7 +7,9 @@ import org.smileyface.webcrawler.crawler.LinkQueue;
 import org.smileyface.webcrawler.elasticsearch.ElasticContext;
 import org.smileyface.webcrawler.model.WebPageContent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -37,6 +39,17 @@ public class ProcessorManager {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ExecutorService executor;
     private final ElasticContext elasticContext;
+
+    // Autowired collaborators required for cron job start
+    @Autowired(required = false)
+    private LinkQueue linkQueue;
+
+    @Autowired(required = false)
+    private CrawlerProperties crawlerProperties;
+
+    // Optional override for default worker count; falls back to available processors when <= 0
+    @Value("${crawler.workerCount:40}")
+    private int workerCount;
 
     /**
      * Autowired constructor providing the ElasticContext bean.
@@ -159,5 +172,38 @@ public class ProcessorManager {
         }
         log.info("ProcessorManager {}: processors -> completed={}, stopped={}, error={}, totalProcessed={} (workers={})",
                 event, completed, stopped, error, processed, statuses.size());
+    }
+
+    /**
+     * Cron job that attempts to start processors every 3 minutes using default settings.
+     * Uses an autowired LinkQueue and CrawlerProperties if available in the Spring context,
+     * and a simple logging sink for {@link WebPageContent}.
+     */
+    @Scheduled(cron = "0 */3 * * * *")
+    public void startCronJob() {
+        // Only applicable when running under Spring with required beans present
+        if (linkQueue == null || crawlerProperties == null) {
+            log.debug("Cron start skipped: missing beans (linkQueue={}, crawlerProperties={})", linkQueue != null, crawlerProperties != null);
+            return;
+        }
+
+        if (isRunning()) {
+            log.debug("Cron start skipped: ProcessorManager already running");
+            return;
+        }
+
+        Consumer<WebPageContent> sink = content -> {
+            // default sink just logs summary; indexing handled inside WebPageProcessor via ElasticContext
+            if (content != null) {
+                log.debug("Sink consumed page: url={}, status={}", content.getUrl(), content.getStatus());
+            }
+        };
+
+        try {
+            start(workerCount, linkQueue, crawlerProperties, sink);
+        } catch (IllegalStateException e) {
+            // Another concurrent start may have occurred; log and ignore
+            log.debug("Cron start race detected: {}", e.getMessage());
+        }
     }
 }

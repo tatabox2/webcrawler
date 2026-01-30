@@ -113,6 +113,83 @@ class WebPageContentTest {
     }
 
     @Test
+    void setContents_recomputesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len1");
+
+        // null -> length 0
+        doc.setContents(null);
+        assertThat(doc.getContentLength()).isEqualTo(0);
+
+        // empty list -> length 0
+        doc.setContents(List.of());
+        assertThat(doc.getContentLength()).isEqualTo(0);
+
+        // mixed list with nulls and empty strings
+        doc.setContents(java.util.Arrays.asList("abc", "de", null, ""));
+        assertThat(doc.getContentLength()).isEqualTo(5); // 3 + 2 + 0 + 0
+    }
+
+    @Test
+    void addContents_string_updatesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len2");
+        doc.setContents(List.of("A")); // length = 1
+        assertThat(doc.getContentLength()).isEqualTo(1);
+
+        doc.addContents("BC"); // +2 -> 3
+        assertThat(doc.getContentLength()).isEqualTo(3);
+
+        doc.addContents((String) null); // +0 -> 3
+        assertThat(doc.getContentLength()).isEqualTo(3);
+
+        doc.addContents(""); // +0 -> 3
+        assertThat(doc.getContentLength()).isEqualTo(3);
+    }
+
+    @Test
+    void addContents_list_updatesContentLength_andEmptyIsNoOp() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len3");
+        doc.setContents(List.of("x")); // length = 1
+        assertThat(doc.getContentLength()).isEqualTo(1);
+
+        doc.addContents(java.util.Arrays.asList("yy", "zzz", null, "")); // +2 +3 +0 +0 -> 6
+        assertThat(doc.getContentLength()).isEqualTo(6);
+
+        doc.addContents(List.of()); // no-op
+        assertThat(doc.getContentLength()).isEqualTo(6);
+    }
+
+    @Test
+    void updateContents_index_recomputesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len4");
+        doc.setContents(List.of("a", "bbb")); // length = 4
+        assertThat(doc.getContentLength()).isEqualTo(4);
+
+        doc.updateContents(10, "cc"); // becomes ["cc"] -> length = 2
+        assertThat(doc.getContentLength()).isEqualTo(2);
+
+        doc.updateContents(0, null); // becomes [null] -> length = 0
+        assertThat(doc.getContentLength()).isEqualTo(0);
+    }
+
+    @Test
+    void updateContents_list_recomputesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len5");
+        doc.setContents(List.of("aa")); // length = 2
+        assertThat(doc.getContentLength()).isEqualTo(2);
+
+        doc.updateContents(java.util.Arrays.asList("b", "ccc", "")); // 1 + 3 + 0 = 4
+        assertThat(doc.getContentLength()).isEqualTo(4);
+
+        doc.updateContents((java.util.List<String>) null); // cleared -> 0
+        assertThat(doc.getContentLength()).isEqualTo(0);
+    }
+
+    @Test
     void updateContents_list_replacesContentsAndUpdatesHash() {
         WebPageContent doc = new WebPageContent();
         doc.setUrl("https://example.com/hash3");
@@ -159,7 +236,6 @@ class WebPageContentTest {
         doc.setCrawlDepth(2);
         doc.setTitle("Hello");
         doc.setDescription("Desc");
-        doc.setContentLength(42);
         doc.setContentType("text/html");
         doc.setLanguage("en");
 
@@ -173,7 +249,6 @@ class WebPageContentTest {
         assertThat(doc.getCrawlDepth()).isEqualTo(2);
         assertThat(doc.getTitle()).isEqualTo("Hello");
         assertThat(doc.getDescription()).isEqualTo("Desc");
-        assertThat(doc.getContentLength()).isEqualTo(42);
         assertThat(doc.getContentType()).isEqualTo("text/html");
         assertThat(doc.getLanguage()).isEqualTo("en");
 

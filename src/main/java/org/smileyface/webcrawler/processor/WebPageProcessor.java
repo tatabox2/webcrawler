@@ -3,6 +3,7 @@ package org.smileyface.webcrawler.processor;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.smileyface.webcrawler.crawler.CrawlerProperties;
@@ -11,10 +12,14 @@ import org.smileyface.webcrawler.elasticsearch.ElasticContext;
 import org.smileyface.webcrawler.elasticsearch.ElasticRestClient;
 import org.smileyface.webcrawler.model.CrawlStatus;
 import org.smileyface.webcrawler.model.WebPageContent;
+import org.smileyface.webcrawler.util.CrawlerUtils;
+import org.smileyface.webcrawler.extractor.ContentExtractor;
+import org.smileyface.webcrawler.extractor.ContentRule;
 
 import java.net.URI;
 import java.time.Instant;
 import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -55,23 +60,6 @@ public class WebPageProcessor implements Runnable {
         this.sink = Objects.requireNonNull(sink, "sink");
         this.elasticContext = elasticContext;
         this.elasticRestClient = (elasticContext == null) ? null : new ElasticRestClient(elasticContext);
-    }
-
-    /**
-     * Builds the Elasticsearch index name by concatenating the crawler indexPrefix and the tenantId
-     * from the ElasticContext with a dash in between: prefix + "-" + tenantId.
-     *
-     * If the prefix is null/blank, returns null to signal "do not index".
-     * If the context is null or has a blank tenant id, "default" is used as the tenant id.
-     */
-    public static String getIndexName(CrawlerProperties props, ElasticContext ctx) {
-        if (props == null) return null;
-        String prefix = props.getIndexPrefix();
-        if (prefix == null || prefix.isBlank()) return null;
-        String tenant = (ctx == null || ctx.getTenantId() == null || ctx.getTenantId().isBlank())
-                ? "default"
-                : ctx.getTenantId();
-        return prefix + "-" + tenant;
     }
 
     public void stop() {
@@ -158,7 +146,7 @@ public class WebPageProcessor implements Runnable {
         Document doc = null;
         try {
             Connection conn = Jsoup.connect(url)
-                    .userAgent(Objects.toString(properties.getUserAgent(), "SmileyfaceWebCrawler/0.1"))
+                    .userAgent(Objects.toString(properties.getUserAgent(), properties.getUserAgent()))
                     .timeout(Math.max(0, properties.getRequestTimeoutMs()))
                     .followRedirects(true)
                     .ignoreHttpErrors(true);
@@ -183,7 +171,6 @@ public class WebPageProcessor implements Runnable {
 
         try {
             String title = doc.title();
-            String text = doc.body() != null ? doc.body().text() : "";
 
             WebPageContent w = new WebPageContent();
             w.setUrl(url);
@@ -193,14 +180,23 @@ public class WebPageProcessor implements Runnable {
             w.setHttpStatus(httpStatus);
             w.setContentType(contentType);
             w.setTitle(title);
-            // store as single segment contents
-            w.setContents(java.util.List.of(text));
-            w.setContentLength(text != null ? text.length() : 0);
+
+            // Use ContentExtractor with rules from CrawlerProperties
+            ContentExtractor extractor = new ContentExtractor();
+            List<ContentRule> rules = properties.getContentRules(url);
+            Element root = doc.body() != null ? doc.body() : doc;
+
+            List<String> contents = properties.matchAllByUrl(url) ?
+                    extractor.extractContent(root, null, rules) :  // matchAll
+                    extractor.extractContent(root, rules); // matchAny
+
+            // Setting contents will also update contentLength via WebPageContent logic
+            w.addContents(contents);
             w.setFetchDurationMs(durationMs(start, Instant.now()));
             sink.accept(w);
             // Index the document into Elasticsearch if configured and only on successful population
-            String indexName = getIndexName(properties, elasticContext);
-            if (elasticRestClient != null && indexName != null && !indexName.isBlank()) {
+            String indexName = CrawlerUtils.getIndexName(properties, elasticContext);
+            if (contents.size() > 0 && elasticRestClient != null && indexName != null && !indexName.isBlank()) {
                 try {
                     String assignedId = elasticRestClient.indexDocument(indexName, w);
                     if (assignedId != null && (w.getId() == null || w.getId().isBlank())) {
@@ -225,6 +221,7 @@ public class WebPageProcessor implements Runnable {
             w.setHttpStatus(httpStatus);
             w.setContentType(contentType);
             w.setFetchDurationMs(durationMs(start, Instant.now()));
+            w.setCrawlDepth(properties.getMaxDepth());
             sink.accept(w);
             throw new Exception(e);
         }

@@ -33,7 +33,7 @@ public class WebPageContent {
     private String title;              // HTML <title>
     private String description;        // Meta description or extracted summary
     private List<String> contents;     // Extracted visible text/body segments
-    private Integer contentLength;     // Character length of content (or bytes if preferred)
+    private long contentLength;        // Character length of content (or bytes if preferred)
     private String contentType;        // e.g., "text/html"
     private String language;           // Optional language code (e.g., "en")
     private List<String> outLinks;     // Normalized outgoing links from this page
@@ -103,6 +103,8 @@ public class WebPageContent {
     public List<String> getContents() { return contents; }
     public void setContents(List<String> contents) {
         this.contents = contents != null ? new ArrayList<>(contents) : null;
+        // Keep derived fields in sync
+        recomputeContentLength();
         this.hash = computeHash(this.url, this.contents);
     }
 
@@ -117,6 +119,8 @@ public class WebPageContent {
             this.contents = new ArrayList<>();
         }
         this.contents.add(content);
+        // Keep derived fields in sync (handle nulls safely)
+        recomputeContentLength();
         this.hash = computeHash(this.url, this.contents);
     }
 
@@ -135,6 +139,8 @@ public class WebPageContent {
             this.contents = new ArrayList<>();
         }
         this.contents.addAll(moreContents);
+        // Keep derived fields in sync (handle nulls safely)
+        recomputeContentLength();
         this.hash = computeHash(this.url, this.contents);
     }
 
@@ -150,6 +156,8 @@ public class WebPageContent {
         List<String> newContents = new ArrayList<>(1);
         newContents.add(content);
         this.contents = newContents;
+        // Keep derived fields in sync
+        recomputeContentLength();
         this.hash = computeHash(this.url, this.contents);
     }
 
@@ -161,11 +169,12 @@ public class WebPageContent {
      */
     public void updateContents(List<String> newContents) {
         this.contents = newContents != null ? new ArrayList<>(newContents) : null;
+        // Keep derived fields in sync
+        recomputeContentLength();
         this.hash = computeHash(this.url, this.contents);
     }
 
-    public Integer getContentLength() { return contentLength; }
-    public void setContentLength(Integer contentLength) { this.contentLength = contentLength; }
+    public long getContentLength() { return contentLength; }
 
     public String getContentType() { return contentType; }
     public void setContentType(String contentType) { this.contentType = contentType; }
@@ -179,6 +188,22 @@ public class WebPageContent {
     }
 
     public String getHash() { return hash; }
+
+    /**
+     * Recomputes and updates the total content length from the current contents list.
+     * Null or empty contents result in a length of 0. Null segments are treated as length 0.
+     */
+    private void recomputeContentLength() {
+        int total = 0;
+        if (this.contents != null && !this.contents.isEmpty()) {
+            for (String c : this.contents) {
+                if (c != null) {
+                    total += c.length();
+                }
+            }
+        }
+        this.contentLength = total;
+    }
 
     /**
      * Computes a deterministic SHA-256 hex hash from the combination of URL and content.
