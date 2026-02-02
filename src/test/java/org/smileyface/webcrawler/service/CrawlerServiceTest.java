@@ -52,8 +52,8 @@ import static org.assertj.core.api.Assertions.*;
  */
 @SpringJUnitConfig(classes = {BeanConfig.class,
         CrawlerServiceTest.TestPropsConfig.class})
-@TestPropertySource( properties = {"crawler.workerCount=40"},
-locations = "classpath:application.yml")
+@TestPropertySource(properties = {"crawler.workerCount=40"},
+        locations = "classpath:application-test.yml")
 class CrawlerServiceTest {
 
     Logger logger = LogManager.getLogger(CrawlerServiceTest.class);
@@ -114,7 +114,7 @@ class CrawlerServiceTest {
         }
 
         @Bean
-        public ProcessorManager processorManager() {
+        public ProcessorManager processorManager(ElasticContext elasticContext) {
             return new ProcessorManager(elasticContext);
         }
 
@@ -169,7 +169,8 @@ class CrawlerServiceTest {
     private static Stream<Arguments> testDataProvider() {
         return Stream.of(
                     Arguments.arguments( "planet-x.html", ".*\\.nasa.gov/.*"),
-                    Arguments.arguments("t23389-topic.html", ".*\\.666forum.com/.*")
+                    Arguments.arguments("t23389-topic.html", ".*\\.666forum.com/.*"),
+                    Arguments.arguments("t18300-topic.html", ".*\\.666forum.com/.*")
                 );
     }
 
@@ -308,8 +309,9 @@ class CrawlerServiceTest {
         String base = "http://localhost:" + port;
 
         crawlerProperties.setMaxDepth(0);
-        int minCharacters = 1000;
+        int minCharacters = 0;
         CrawlerProperties.ContentRulesConfig contentRulesConfig = new CrawlerProperties.ContentRulesConfig(minCharacters, "", "");
+        contentRulesConfig.elementStyle="font-size: 24px; line-height: normal";
         CrawlerProperties.PageConfig pageConfig = new CrawlerProperties.PageConfig("^http://localhost.*", contentRulesConfig);
         pageConfig.matchAll = true;
         crawlerProperties.addPageConfig(pageConfig);

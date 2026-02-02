@@ -13,7 +13,8 @@
       "matchAll": true,
       "contentRules": {
         "minCharacter": 600,
-        "tagName": "span"
+        "tagName": "span",
+        "elementStyle": "font-size: 24px; line-height: normal"
       }
     },
     {

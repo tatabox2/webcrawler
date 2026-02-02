@@ -16,6 +16,7 @@ import org.smileyface.webcrawler.extractor.ClassNameContentRule;
 import org.smileyface.webcrawler.extractor.ContentRule;
 import org.smileyface.webcrawler.extractor.MinCharacterRule;
 import org.smileyface.webcrawler.extractor.TagNameContentRule;
+import org.smileyface.webcrawler.extractor.ElementStyleRule;
 
 /**
  * Configuration properties for the simple crawler link discovery.
@@ -90,9 +91,9 @@ public class CrawlerProperties {
                 this.contentRules = cfg.contentRules;
                 if (cfg.pages != null) this.pages = new ArrayList<>(cfg.pages);
             }
-        } catch (Exception ignored) {
-            log.error("Failed to load default crawler configuration from classpath resource WebCrawlerConfig.json", ignored);
-            // Keep defaults when file missing or malformed; do not fail application startup
+        } catch (Exception exception) {
+            log.error("Failed to load default crawler configuration from classpath resource WebCrawlerConfig.json", exception);
+            throw new RuntimeException(exception);
         }
         // Build the page rules map once during construction
         rebuildPageRulesMap();
@@ -273,6 +274,9 @@ public class CrawlerProperties {
                 if (!cls.isEmpty()) list.add(new ClassNameContentRule(cls));
             }
         }
+        if (cfg.elementStyle != null && !cfg.elementStyle.isBlank()) {
+            list.add(new ElementStyleRule(cfg.elementStyle.trim()));
+        }
         return list;
     }
 
@@ -342,5 +346,7 @@ public class CrawlerProperties {
         public Integer minCharacter;
         public String tagName;
         public String classNames; // comma-separated
+        /** Optional inline style fragment used by ElementStyleRule (case-insensitive substring match). */
+        public String elementStyle;
     }
 }
