@@ -7,7 +7,7 @@ public class CrawlerUtils {
 
     private CrawlerUtils() {
         // No instanciation
-    };
+    }
 
     // String input and remove html tag
     public static String removeHtmlTags(String input) {

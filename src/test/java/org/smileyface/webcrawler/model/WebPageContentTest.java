@@ -185,7 +185,7 @@ class WebPageContentTest {
         doc.updateContents(java.util.Arrays.asList("b", "ccc", "")); // 1 + 3 + 0 = 4
         assertThat(doc.getContentLength()).isEqualTo(4);
 
-        doc.updateContents((java.util.List<String>) null); // cleared -> 0
+        doc.updateContents(null); // cleared -> 0
         assertThat(doc.getContentLength()).isEqualTo(0);
     }
 
@@ -212,7 +212,7 @@ class WebPageContentTest {
         doc.setContents(List.of("old1", "old2"));
         String before = doc.getHash();
 
-        doc.updateContents(5, "only"); // index is ignored by spec
+        doc.updateContents(5, "only"); // hash ignores index
 
         List<String> expected = List.of("only");
         assertThat(doc.getContents()).as("Contents should be overridden to a single element").isEqualTo(expected);

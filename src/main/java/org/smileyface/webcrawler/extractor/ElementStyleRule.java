@@ -39,7 +39,7 @@ public final class ElementStyleRule implements ContentRule {
     public boolean isMatched(Element element) {
         if (element == null) return false;
         String style = element.attr("style");
-        if (style == null || style.isBlank()) return false;
+        if (style.isBlank()) return false;
         return style.toLowerCase().contains(styleFragmentLower);
     }
 }

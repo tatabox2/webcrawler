@@ -7,7 +7,6 @@ import org.jsoup.nodes.Element;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Utility to extract textual content segments from an HTML string by applying a set of {@link ContentRule}s.

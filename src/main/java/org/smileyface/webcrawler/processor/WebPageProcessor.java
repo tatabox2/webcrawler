@@ -184,7 +184,7 @@ public class WebPageProcessor implements Runnable {
             // Use ContentExtractor with rules from CrawlerProperties
             ContentExtractor extractor = new ContentExtractor();
             List<ContentRule> rules = properties.getContentRules(url);
-            Element root = doc.body() != null ? doc.body() : doc;
+            Element root = doc.body();
 
             List<String> contents = properties.matchAllByUrl(url) ?
                     extractor.extractContent(root, null, rules) :  // matchAll
@@ -196,7 +196,7 @@ public class WebPageProcessor implements Runnable {
             sink.accept(w);
             // Index the document into Elasticsearch if configured and only on successful population
             String indexName = CrawlerUtils.getIndexName(properties, elasticContext);
-            if (contents.size() > 0 && elasticRestClient != null && indexName != null && !indexName.isBlank()) {
+            if (!contents.isEmpty() && elasticRestClient != null && indexName != null && !indexName.isBlank()) {
                 try {
                     String assignedId = elasticRestClient.indexDocument(indexName, w);
                     if (assignedId != null && (w.getId() == null || w.getId().isBlank())) {
