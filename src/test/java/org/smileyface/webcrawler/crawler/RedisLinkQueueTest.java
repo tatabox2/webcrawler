@@ -11,7 +11,7 @@ import org.testcontainers.containers.GenericContainer;
 
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 @Disabled("Consolidated into LinkQueueParameterizedTest")
 class RedisLinkQueueTest {
@@ -53,7 +53,7 @@ class RedisLinkQueueTest {
     void emptyQueueDequeueReturnsNull() {
         Assumptions.assumeTrue(dockerAvailable, "Docker is not available; skipping RedisLinkQueue tests");
         RedisLinkQueue q = newQueue("test:" + UUID.randomUUID());
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @Test
@@ -62,7 +62,7 @@ class RedisLinkQueueTest {
         RedisLinkQueue q = newQueue("test:" + UUID.randomUUID());
         q.enqueue(null);
         q.enqueue("   ");
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @Test
@@ -74,12 +74,12 @@ class RedisLinkQueueTest {
         q.enqueue(url);
         q.enqueue(url); // duplicate ignored
 
-        assertEquals(url, q.deQueue());
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isEqualTo(url);
+        assertThat(q.deQueue()).isNull();
 
         // Re-enqueue after dequeue should still be ignored due to seen set
         q.enqueue(url);
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @Test
@@ -95,9 +95,9 @@ class RedisLinkQueueTest {
         q.enqueue(a); // duplicate should not affect queue
         q.enqueue(c);
 
-        assertEquals(a, q.deQueue());
-        assertEquals(b, q.deQueue());
-        assertEquals(c, q.deQueue());
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isEqualTo(a);
+        assertThat(q.deQueue()).isEqualTo(b);
+        assertThat(q.deQueue()).isEqualTo(c);
+        assertThat(q.deQueue()).isNull();
     }
 }

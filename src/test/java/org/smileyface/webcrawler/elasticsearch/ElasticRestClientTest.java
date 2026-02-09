@@ -17,7 +17,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * Integration tests for ElasticRestClient#indexDocument using a real Elasticsearch Testcontainer.
@@ -66,7 +66,7 @@ class ElasticRestClientTest {
 
         String index = ("test_index_" + UUID.randomUUID()).toLowerCase();
         boolean created = es.createIndex(index);
-        assertTrue(created, "Index should be created for test");
+        assertThat(created).as("Index should be created for test").isTrue();
 
         WebPageContent doc = new WebPageContent();
         String id = "doc-" + UUID.randomUUID();
@@ -77,12 +77,12 @@ class ElasticRestClientTest {
         // Do not set Instant fields to avoid requiring Jackson JavaTimeModule in this test
 
         String returnedId = es.indexDocument(index, doc);
-        assertEquals(id, returnedId, "Returned id should equal provided id");
+        assertThat(returnedId).as("Returned id should equal provided id").isEqualTo(id);
 
         GetResponse<WebPageContent> get = validationClient.get(g -> g.index(index).id(returnedId), WebPageContent.class);
-        assertTrue(get.found(), "Indexed document should be retrievable by id");
-        assertNotNull(get.source());
-        assertEquals(url, get.source().getUrl());
+        assertThat(get.found()).as("Indexed document should be retrievable by id").isTrue();
+        assertThat(get.source()).isNotNull();
+        assertThat(get.source().getUrl()).isEqualTo(url);
     }
 
     @Test
@@ -91,7 +91,7 @@ class ElasticRestClientTest {
 
         String index = ("test_index_" + UUID.randomUUID()).toLowerCase();
         boolean created = es.createIndex(index);
-        assertTrue(created, "Index should be created for test");
+        assertThat(created).as("Index should be created for test").isTrue();
 
         WebPageContent doc = new WebPageContent();
         String url = "https://autogen.example/" + UUID.randomUUID();
@@ -100,12 +100,12 @@ class ElasticRestClientTest {
         // Do not set Instant fields to avoid requiring Jackson JavaTimeModule in this test
 
         String returnedId = es.indexDocument(index, doc);
-        assertNotNull(returnedId);
-        assertFalse(returnedId.isBlank());
+        assertThat(returnedId).isNotNull();
+        assertThat(returnedId.isBlank()).isFalse();
 
         GetResponse<WebPageContent> get = validationClient.get(g -> g.index(index).id(returnedId), WebPageContent.class);
-        assertTrue(get.found());
-        assertEquals(url, get.source().getUrl());
+        assertThat(get.found()).isTrue();
+        assertThat(get.source().getUrl()).isEqualTo(url);
     }
 
     @Test
@@ -118,9 +118,9 @@ class ElasticRestClientTest {
         doc.setUrl("https://x");
         doc.setContents(List.of("y"));
 
-        assertThrows(IllegalArgumentException.class, () -> localEs.indexDocument(null, doc));
-        assertThrows(IllegalArgumentException.class, () -> localEs.indexDocument("  ", doc));
-        assertThrows(IllegalArgumentException.class, () -> localEs.indexDocument("idx", null));
+        assertThatThrownBy(() -> localEs.indexDocument(null, doc)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> localEs.indexDocument("  ", doc)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> localEs.indexDocument("idx", null)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -131,11 +131,11 @@ class ElasticRestClientTest {
         boolean created1 = es.createIndex(index);
         boolean created2 = es.createIndex(index);
 
-        assertTrue(created1, "First creation should create the index");
-        assertFalse(created2, "Second creation should return false (already exists)");
+        assertThat(created1).as("First creation should create the index").isTrue();
+        assertThat(created2).as("Second creation should return false (already exists)").isFalse();
 
         boolean exists = validationClient.indices().exists(b -> b.index(index)).value();
-        assertTrue(exists, "Index should exist in cluster");
+        assertThat(exists).as("Index should exist in cluster").isTrue();
     }
 
     @Test
@@ -143,15 +143,15 @@ class ElasticRestClientTest {
         Assumptions.assumeTrue(dockerAvailable, "Docker is not available; skipping Elasticsearch tests");
 
         String index = ("idx_del_" + UUID.randomUUID()).toLowerCase();
-        assertTrue(es.createIndex(index));
-        assertTrue(validationClient.indices().exists(b -> b.index(index)).value());
+        assertThat(es.createIndex(index)).isTrue();
+        assertThat(validationClient.indices().exists(b -> b.index(index)).value()).isTrue();
 
         boolean deleted1 = es.deleteIndex(index);
         boolean deleted2 = es.deleteIndex(index);
 
-        assertTrue(deleted1, "Existing index should be deleted");
-        assertFalse(deleted2, "Deleting again should return false (not found)");
-        assertFalse(validationClient.indices().exists(b -> b.index(index)).value());
+        assertThat(deleted1).as("Existing index should be deleted").isTrue();
+        assertThat(deleted2).as("Deleting again should return false (not found)").isFalse();
+        assertThat(validationClient.indices().exists(b -> b.index(index)).value()).isFalse();
     }
 
     @Test
@@ -160,12 +160,12 @@ class ElasticRestClientTest {
 
         String index = ("idx_alias_" + UUID.randomUUID()).toLowerCase();
         String alias = ("alias_" + UUID.randomUUID()).toLowerCase();
-        assertTrue(es.createIndex(index));
+        assertThat(es.createIndex(index)).isTrue();
 
         // Create alias and verify it exists
         es.createAlias(index, alias);
         boolean aliasExists = validationClient.indices().existsAlias(b -> b.index(index).name(alias)).value();
-        assertTrue(aliasExists, "Alias should exist for index");
+        assertThat(aliasExists).as("Alias should exist for index").isTrue();
 
         // Index a document via alias to ensure alias is usable for writes
         WebPageContent doc = new WebPageContent();
@@ -173,16 +173,16 @@ class ElasticRestClientTest {
         doc.setUrl(url);
         doc.setContents(List.of("via-alias"));
         String id = es.indexDocument(alias, doc);
-        assertNotNull(id);
+        assertThat(id).isNotNull();
 
         GetResponse<WebPageContent> fetched = validationClient.get(g -> g.index(index).id(id), WebPageContent.class);
-        assertTrue(fetched.found());
-        assertEquals(url, fetched.source().getUrl());
+        assertThat(fetched.found()).isTrue();
+        assertThat(fetched.source().getUrl()).isEqualTo(url);
 
         // Delete alias and verify it no longer exists
         es.deleteAlias(index, alias);
         boolean aliasExistsAfter = validationClient.indices().existsAlias(b -> b.index(index).name(alias)).value();
-        assertFalse(aliasExistsAfter, "Alias should be removed from index");
+        assertThat(aliasExistsAfter).as("Alias should be removed from index").isFalse();
     }
 
     @Test
@@ -197,10 +197,10 @@ class ElasticRestClientTest {
                 "}";
 
         boolean created = es.createIndex(index, json);
-        assertTrue(created, "Index should be created with JSON body");
+        assertThat(created).as("Index should be created with JSON body").isTrue();
 
         boolean aliasExists = validationClient.indices().existsAlias(b -> b.index(index).name(alias)).value();
-        assertTrue(aliasExists, "Alias from JSON body should be applied to index");
+        assertThat(aliasExists).as("Alias from JSON body should be applied to index").isTrue();
     }
 
     @Test
@@ -212,11 +212,11 @@ class ElasticRestClientTest {
 
         es.createTemplate(template, patterns, null);
         boolean exists = validationClient.indices().existsIndexTemplate(b -> b.name(template)).value();
-        assertTrue(exists, "Template should exist after creation");
+        assertThat(exists).as("Template should exist after creation").isTrue();
 
         es.deleteTemplate(template);
         boolean existsAfter = validationClient.indices().existsIndexTemplate(b -> b.name(template)).value();
-        assertFalse(existsAfter, "Template should be deleted");
+        assertThat(existsAfter).as("Template should be deleted").isFalse();
     }
 
     @Test
@@ -237,15 +237,15 @@ class ElasticRestClientTest {
 
         es.createTemplate(template, patterns, templateJson);
         boolean exists = validationClient.indices().existsIndexTemplate(b -> b.name(template)).value();
-        assertTrue(exists, "Template should exist after creation");
+        assertThat(exists).as("Template should exist after creation").isTrue();
 
         // Create an index that matches the template and verify alias is applied
         String index = prefix + "-0001";
         boolean created = es.createIndex(index);
-        assertTrue(created);
+        assertThat(created).isTrue();
 
         boolean aliasExists = validationClient.indices().existsAlias(b -> b.index(index).name(alias)).value();
-        assertTrue(aliasExists, "Alias defined in template should be applied to the created index");
+        assertThat(aliasExists).as("Alias defined in template should be applied to the created index").isTrue();
 
         // Cleanup template
         es.deleteTemplate(template);

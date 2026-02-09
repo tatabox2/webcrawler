@@ -48,7 +48,6 @@ public class BeanConfig {
      *   falls back to {@link InMemoryLinkQueue} otherwise.
      */
     @Bean
-    @Primary
     public LinkQueue linkQueue(ObjectProvider<StringRedisTemplate> redisProvider,
                                CrawlerProperties properties) {
         String kind = queueType == null ? "in-memory" : queueType.trim().toLowerCase();

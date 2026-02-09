@@ -3,15 +3,23 @@ package org.smileyface.webcrawler.processor;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.smileyface.webcrawler.crawler.CrawlerProperties;
 import org.smileyface.webcrawler.crawler.LinkQueue;
+import org.smileyface.webcrawler.elasticsearch.ElasticContext;
+import org.smileyface.webcrawler.elasticsearch.ElasticRestClient;
 import org.smileyface.webcrawler.model.CrawlStatus;
 import org.smileyface.webcrawler.model.WebPageContent;
+import org.smileyface.webcrawler.util.CrawlerUtils;
+import org.smileyface.webcrawler.extractor.ContentExtractor;
+import org.smileyface.webcrawler.extractor.ContentRule;
 
 import java.net.URI;
 import java.time.Instant;
+import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,6 +37,8 @@ public class WebPageProcessor implements Runnable {
     private final LinkQueue linkQueue;
     private final CrawlerProperties properties;
     private final Consumer<WebPageContent> sink;
+    private final ElasticContext elasticContext;
+    private final ElasticRestClient elasticRestClient; // optional
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private final AtomicLong processedCount = new AtomicLong(0);
@@ -39,11 +49,17 @@ public class WebPageProcessor implements Runnable {
     private volatile Instant startedAt;
     private volatile Instant finishedAt;
 
-    public WebPageProcessor(String id, LinkQueue linkQueue, CrawlerProperties properties, Consumer<WebPageContent> sink) {
+    public WebPageProcessor(String id,
+                             LinkQueue linkQueue,
+                             CrawlerProperties properties,
+                             Consumer<WebPageContent> sink,
+                             ElasticContext elasticContext) {
         this.id = Objects.requireNonNull(id, "id");
         this.linkQueue = Objects.requireNonNull(linkQueue, "linkQueue");
         this.properties = Objects.requireNonNull(properties, "properties");
         this.sink = Objects.requireNonNull(sink, "sink");
+        this.elasticContext = elasticContext;
+        this.elasticRestClient = (elasticContext == null) ? null : new ElasticRestClient(elasticContext);
     }
 
     public void stop() {
@@ -123,14 +139,14 @@ public class WebPageProcessor implements Runnable {
         log.info("Processor {} state {} -> {}", id, old, newState);
     }
 
-    private void processUrl(String url) {
+    private void processUrl(String url) throws Exception {
         Instant start = Instant.now();
         int httpStatus = -1;
         String contentType = null;
         Document doc = null;
         try {
             Connection conn = Jsoup.connect(url)
-                    .userAgent(Objects.toString(properties.getUserAgent(), "SmileyfaceWebCrawler/0.1"))
+                    .userAgent(Objects.toString(properties.getUserAgent(), properties.getUserAgent()))
                     .timeout(Math.max(0, properties.getRequestTimeoutMs()))
                     .followRedirects(true)
                     .ignoreHttpErrors(true);
@@ -155,7 +171,6 @@ public class WebPageProcessor implements Runnable {
 
         try {
             String title = doc.title();
-            String text = doc.body() != null ? doc.body().text() : "";
 
             WebPageContent w = new WebPageContent();
             w.setUrl(url);
@@ -165,11 +180,38 @@ public class WebPageProcessor implements Runnable {
             w.setHttpStatus(httpStatus);
             w.setContentType(contentType);
             w.setTitle(title);
-            // store as single segment contents
-            w.setContents(java.util.List.of(text));
-            w.setContentLength(text != null ? text.length() : 0);
+
+            // Use ContentExtractor with rules from CrawlerProperties
+            ContentExtractor extractor = new ContentExtractor();
+            List<ContentRule> rules = properties.getContentRules(url);
+            Element root = doc.body();
+
+            List<String> contents = properties.matchAllByUrl(url) ?
+                    extractor.extractContent(root, null, rules) :  // matchAll
+                    extractor.extractContent(root, rules); // matchAny
+
+            // Setting contents will also update contentLength via WebPageContent logic
+            w.addContents(contents);
             w.setFetchDurationMs(durationMs(start, Instant.now()));
             sink.accept(w);
+            // Index the document into Elasticsearch if configured and only on successful population
+            String indexName = CrawlerUtils.getIndexName(properties, elasticContext);
+            if (!contents.isEmpty() && elasticRestClient != null && indexName != null && !indexName.isBlank()) {
+                try {
+                    String assignedId = elasticRestClient.indexDocument(indexName, w);
+                    if (assignedId != null && (w.getId() == null || w.getId().isBlank())) {
+                        w.setId(assignedId);
+                    }
+                } catch (IOException e) {
+                    String msg = "Processor %s failed to index document for url=%s to index=%s - %s".formatted(id, url, indexName, e.getMessage());
+                    log.error(msg, e.getMessage());
+                    throw new IOException(msg, e);
+                } catch (Exception e) {
+                    String msg = "Processor %s unexpected error indexing document for url=%s to index=%s".formatted(id, url, indexName);
+                    log.error(msg, e);
+                    throw new Exception(msg, e);
+                }
+            }
         } catch (Exception e) {
             WebPageContent w = new WebPageContent();
             w.setUrl(url);
@@ -179,7 +221,9 @@ public class WebPageProcessor implements Runnable {
             w.setHttpStatus(httpStatus);
             w.setContentType(contentType);
             w.setFetchDurationMs(durationMs(start, Instant.now()));
+            w.setCrawlDepth(properties.getMaxDepth());
             sink.accept(w);
+            throw new Exception(e);
         }
     }
 

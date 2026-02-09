@@ -1,6 +1,8 @@
 package org.smileyface.webcrawler.crawler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.io.InputStream;
@@ -13,12 +15,15 @@ import org.smileyface.webcrawler.extractor.ClassNameContentRule;
 import org.smileyface.webcrawler.extractor.ContentRule;
 import org.smileyface.webcrawler.extractor.MinCharacterRule;
 import org.smileyface.webcrawler.extractor.TagNameContentRule;
+import org.smileyface.webcrawler.extractor.ElementStyleRule;
 
 /**
  * Configuration properties for the simple crawler link discovery.
  */
 @ConfigurationProperties(prefix = "crawler")
 public class CrawlerProperties {
+
+    Logger log = LogManager.getLogger(CrawlerProperties.class);
 
     /**
      * Maximum crawl depth starting from the entry URL. depth=0 means only the entry page.
@@ -58,6 +63,9 @@ public class CrawlerProperties {
     /** Cached generic (global) rules list built from {@link #contentRules}. */
     private List<ContentRule> genericRules = new ArrayList<>();
 
+    /** Optional index prefix for storing crawled page contents in Elasticsearch. */
+    private String indexPrefix;
+
     /**
      * Loads default values from classpath resource WebCrawlerConfig.json if available.
      * Spring will still bind/override values from application properties as usual.
@@ -74,12 +82,17 @@ public class CrawlerProperties {
                 if (cfg.userAgent != null && !cfg.userAgent.isBlank()) this.userAgent = cfg.userAgent;
                 if (cfg.requestTimeoutMs != null && cfg.requestTimeoutMs > 0) this.requestTimeoutMs = cfg.requestTimeoutMs;
                 if (cfg.queueNamespace != null && !cfg.queueNamespace.isBlank()) this.queueNamespace = cfg.queueNamespace;
+                // Load new field 'indexPrefix'
+                if (cfg.indexPrefix != null && !cfg.indexPrefix.isBlank()) {
+                    this.indexPrefix = cfg.indexPrefix;
+                }
                 // Content rules and pages
                 this.contentRules = cfg.contentRules;
                 if (cfg.pages != null) this.pages = new ArrayList<>(cfg.pages);
             }
-        } catch (Exception ignored) {
-            // Keep defaults when file missing or malformed; do not fail application startup
+        } catch (Exception exception) {
+            log.error("Failed to load default crawler configuration from classpath resource WebCrawlerConfig.json", exception);
+            throw new RuntimeException(exception);
         }
         // Build the page rules map once during construction
         rebuildPageRulesMap();
@@ -153,6 +166,14 @@ public class CrawlerProperties {
         rebuildPageRulesMap();
     }
 
+    public String getIndexPrefix() {
+        return indexPrefix;
+    }
+
+    public void setIndexPrefix(String indexPrefix) {
+        this.indexPrefix = (indexPrefix == null || indexPrefix.isBlank()) ? null : indexPrefix;
+    }
+
     /**
      * Build a mapping from page URL to a list of ContentRule, combining generic
      * rules (if any) with page-specific rules.
@@ -162,10 +183,26 @@ public class CrawlerProperties {
     }
 
     /**
+     *  get the matchAll flag value by the passing url pattern
+     *  return true;
+     */
+    public boolean matchAllByUrl(String url) {
+        if (url == null || url.isBlank()) return false;
+        if (pages == null) return false;
+
+        // loop thorught all pages to find the matchAll flag
+        return pages.stream().anyMatch(page -> url.matches(page.urlPattern) && page.matchAll);
+    }
+
+    /**
      * Returns the list of {@link ContentRule} for the given URL.
-     * If the URL exactly matches a configured page entry, returns the merged
-     * list of generic and page-specific rules for that page. Otherwise, returns
-     * the generic rules. Null/blank URLs are treated as unmatched.
+     * This uses Java regular expressions stored in {@link PageConfig#urlPattern} as patterns.
+     * If the provided URL matches (via {@code String#matches(String)}) any configured
+     * page pattern, the merged list of generic and page-specific rules for the first
+     * matching page (in declaration order) is returned. If none match, the generic
+     * rules are returned. Null/blank URLs are treated as unmatched.
+     *
+     * Note: Invalid regex patterns in configuration are ignored gracefully.
      *
      * @param url absolute URL string
      * @return list of rules to apply (never null)
@@ -174,14 +211,56 @@ public class CrawlerProperties {
         if (url == null || url.isBlank()) {
             return genericRules;
         }
-        List<ContentRule> rules = pageRulesMap.get(url);
-        return (rules != null) ? rules : genericRules;
+        if (pages != null) {
+            for (PageConfig p : pages) {
+                if (p == null || p.urlPattern == null || p.urlPattern.isBlank()) continue;
+                try {
+                    if (url.matches(p.urlPattern)) {
+                        List<ContentRule> rules = pageRulesMap.get(p.urlPattern);
+                        if (rules != null) return rules;
+                    }
+                } catch (java.util.regex.PatternSyntaxException ignored) {
+                    // Skip invalid pattern
+                }
+            }
+        }
+        return genericRules;
+    }
+
+    /**
+     * Adds a single {@link PageConfig} at runtime and updates the internal page rules map.
+     * If the provided config or its URL is null/blank, the call is ignored.
+     *
+     * This method merges the currently effective generic rules with the rules defined in the
+     * provided {@code pageConfig} and stores the result into {@link #pageRulesMap} under the
+     * page URL. If a config for the same URL already exists, it will be overwritten.
+     *
+     * Note: This does not rebuild the entire map — only the given page entry is (re)computed.
+     *
+     * @param pageConfig page configuration to add
+     */
+    public void addPageConfig(PageConfig pageConfig) {
+        if (pageConfig == null) return;
+        String url = pageConfig.urlPattern;
+        if (url == null || url.isBlank()) return;
+
+        if (this.pages == null) {
+            this.pages = new ArrayList<>();
+        }
+        this.pages.add(pageConfig);
+
+        // Build rules for this page by merging current generic rules and page-specific rules
+        List<ContentRule> rules = new ArrayList<>();
+        if (pageConfig.contentRules != null) {
+            rules.addAll(buildRules(pageConfig.contentRules));
+        }
+        this.pageRulesMap.put(url, rules);
     }
 
     private List<ContentRule> buildRules(ContentRulesConfig cfg) {
         List<ContentRule> list = new ArrayList<>();
         if (cfg == null) return list;
-        if (cfg.minCharacter != null && cfg.minCharacter > 0) {
+        if (cfg.minCharacter != null && cfg.minCharacter >= 0) {
             list.add(new MinCharacterRule(cfg.minCharacter));
         }
         if (cfg.tagName != null && !cfg.tagName.isBlank()) {
@@ -194,21 +273,26 @@ public class CrawlerProperties {
                 if (!cls.isEmpty()) list.add(new ClassNameContentRule(cls));
             }
         }
+        if (cfg.elementStyle != null && !cfg.elementStyle.isBlank()) {
+            list.add(new ElementStyleRule(cfg.elementStyle.trim()));
+        }
         return list;
     }
 
     private void rebuildPageRulesMap() {
         Map<String, List<ContentRule>> map = new HashMap<>();
+        Map<String, Boolean> matchAllMap = new HashMap<>();
         // Build and cache the generic rules first
         this.genericRules = buildRules(this.contentRules);
         if (pages != null) {
             for (PageConfig p : pages) {
-                if (p == null || p.url == null) continue;
-                List<ContentRule> rules = new ArrayList<>(this.genericRules);
+                if (p == null || p.urlPattern == null) continue;
+                List<ContentRule> rules = new ArrayList<>();
                 if (p.contentRules != null) {
                     rules.addAll(buildRules(p.contentRules));
                 }
-                map.put(p.url, rules);
+                map.put(p.urlPattern, rules);
+                matchAllMap.put(p.urlPattern, p.matchAll);
             }
         }
         this.pageRulesMap = map;
@@ -222,18 +306,46 @@ public class CrawlerProperties {
         public String userAgent;
         public Integer requestTimeoutMs;
         public String queueNamespace;
+        // Preferred field name for ES index prefix
+        public String indexPrefix;
         public ContentRulesConfig contentRules;
         public List<PageConfig> pages;
     }
 
     public static class PageConfig {
-        public String url;
+
+        public PageConfig() {} // for JSON mapping
+        public PageConfig(String urlPattern, ContentRulesConfig contentRules) {
+            this.urlPattern = urlPattern;
+            this.contentRules = contentRules;
+        }
+        public PageConfig(String urlPattern, boolean matchAll, ContentRulesConfig contentRules) {
+            this.urlPattern = urlPattern;
+            this.matchAll = matchAll;
+            this.contentRules = contentRules;
+        }
+        public String urlPattern;
+        /**
+         * When true, indicates that content extraction rules for this page should be treated as a
+         * "match all rules" set. Default is false. The actual extraction behavior may consult this
+         * flag where applicable.
+         */
+        public boolean matchAll = false;
         public ContentRulesConfig contentRules;
     }
 
     public static class ContentRulesConfig {
+
+        public ContentRulesConfig() {} // for JSON mapping
+        public ContentRulesConfig(Integer minCharacter, String tagName, String classNames) {
+            this.minCharacter = minCharacter;
+            this.tagName = tagName;
+            this.classNames = classNames;
+        }
         public Integer minCharacter;
         public String tagName;
         public String classNames; // comma-separated
+        /** Optional inline style fragment used by ElementStyleRule (case-insensitive substring match). */
+        public String elementStyle;
     }
 }

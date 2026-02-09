@@ -8,15 +8,23 @@ spring:
 
 # Elasticsearch client configuration
 elasticsearch:
-  hosts: ["http://localhost:9200"]
+  hosts: [ "http://localhost:9200" ]
   username: ""
   password: ""
 
 # Crawler configuration
 crawler:
   maxDepth: 1
-  includePatterns: []
-  excludePatterns: []
-  userAgent: "SmileyfaceWebCrawler/0.1 (+https://example.org)"
+  queue:
+    type: "redis"
+  workerCount: 40
+  includePatterns: [ ]
+  excludePatterns: [ ]
+  userAgent: "SmileyfaceWebCrawler/0.1"
   requestTimeoutMs: 10000
   queueNamespace: "crawler"
+
+# Logging setting
+logging:
+  level:
+    root: INFO

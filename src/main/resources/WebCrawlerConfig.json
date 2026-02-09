@@ -5,17 +5,22 @@
   "userAgent": "SmileyfaceWebCrawler/0.1",
   "requestTimeoutMs": 10000,
   "queueNamespace": "crawler",
-  "contentRules": {
-    "minCharacter": 80
-  },
+  "indexPrefix": "crawler-main",
 
   "pages": [
     {
-      "url": "",
+      "urlPattern": "^https://www.666forum.com.*",
+      "matchAll": true,
       "contentRules": {
-        "minCharacter": 80,
-        "tagName": "",
-        "classNames": ""
+        "minCharacter": 600,
+        "tagName": "span",
+        "elementStyle": "font-size: 24px; line-height: normal"
+      }
+    },
+    {
+      "urlPattern": "^https://science.nasa.gov.*",
+      "contentRules": {
+        "minCharacter": 600
       }
     }
   ]

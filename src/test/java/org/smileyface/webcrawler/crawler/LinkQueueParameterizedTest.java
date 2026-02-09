@@ -17,7 +17,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * Contract tests for LinkQueue implementations using JUnit 5 parameterized tests.
@@ -84,7 +84,7 @@ class LinkQueueParameterizedTest {
     @DisplayName("emptyQueueDequeueReturnsNull")
     void emptyQueueDequeueReturnsNull(String implName, Supplier<LinkQueue> supplier) {
         LinkQueue q = supplier.get();
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @ParameterizedTest(name = "{index} => impl={0}")
@@ -94,7 +94,7 @@ class LinkQueueParameterizedTest {
         LinkQueue q = supplier.get();
         q.enqueue(null);
         q.enqueue("   ");
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @ParameterizedTest(name = "{index} => impl={0}")
@@ -107,12 +107,12 @@ class LinkQueueParameterizedTest {
         q.enqueue(url);
         q.enqueue(url); // duplicate
 
-        assertEquals(url, q.deQueue());
-        assertNull(q.deQueue()); // only one instance should be present
+        assertThat(q.deQueue()).isEqualTo(url);
+        assertThat(q.deQueue()).isNull(); // only one instance should be present
 
         // Re-enqueue after dequeue is still ignored due to dedupe set retention
         q.enqueue(url);
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @ParameterizedTest(name = "{index} => impl={0}")
@@ -129,10 +129,10 @@ class LinkQueueParameterizedTest {
         q.enqueue(a); // duplicate should not change order
         q.enqueue(c);
 
-        assertEquals(a, q.deQueue());
-        assertEquals(b, q.deQueue());
-        assertEquals(c, q.deQueue());
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isEqualTo(a);
+        assertThat(q.deQueue()).isEqualTo(b);
+        assertThat(q.deQueue()).isEqualTo(c);
+        assertThat(q.deQueue()).isNull();
     }
 
     @ParameterizedTest(name = "{index} => impl={0}")
@@ -149,21 +149,21 @@ class LinkQueueParameterizedTest {
         q.init();
 
         // Queue should be empty after init
-        assertNull(q.deQueue(), "Queue should be empty immediately after init()");
+        assertThat(q.deQueue()).as("Queue should be empty immediately after init()").isNull();
 
         // Deduplication should be reset: re-enqueue previously seen URLs should be accepted
         q.enqueue(a);
-        assertEquals(a, q.deQueue());
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isEqualTo(a);
+        assertThat(q.deQueue()).isNull();
 
         // Now, without another init, re-enqueue should be ignored due to dedupe retention
         q.enqueue(a);
-        assertNull(q.deQueue(), "Re-enqueue without re-init should be ignored due to dedupe retention");
+        assertThat(q.deQueue()).as("Re-enqueue without re-init should be ignored due to dedupe retention").isNull();
 
         // After init again, it should be allowed
         q.init();
         q.enqueue(a);
-        assertEquals(a, q.deQueue());
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isEqualTo(a);
+        assertThat(q.deQueue()).isNull();
     }
 }

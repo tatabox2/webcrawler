@@ -11,7 +11,9 @@ import org.smileyface.webcrawler.crawler.CrawlerProperties;
 import org.smileyface.webcrawler.crawler.LinkQueue;
 import org.smileyface.webcrawler.elasticsearch.ElasticContext;
 import org.smileyface.webcrawler.processor.ProcessorManager;
+import org.smileyface.webcrawler.model.WebPageContent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.function.Consumer;
 
 /**
  * A simple crawler that starts from one entry URL, traverses HTML links up to configured depth,
@@ -38,7 +41,11 @@ public class CrawlerService {
     private final LinkQueue linkQueue;
     private final CrawlerProperties properties;
     private ProcessorManager processorManager; // optional when created manually in tests
-    private ElasticContext elasticContext;     // instantiated from application.yaml when using Spring
+    private ElasticContext elasticContext;     // instantiated from application.yml when using Spring
+    
+    // Inject explicit worker count from application properties if provided.
+    @Value("${crawler.workerCount:15}")
+    private int workerCount;
 
     public CrawlerService(LinkQueue linkQueue, CrawlerProperties properties) {
         this.linkQueue = linkQueue;
@@ -100,6 +107,13 @@ public class CrawlerService {
 
         frontier.add(new UrlDepth(start, 0));
         visited.add(start);
+        // Only enqueue the entry URL when a ProcessorManager is present (i.e., when we intend
+        // to actually process the page content). In link-discovery-only contexts (tests that
+        // construct CrawlerService without a ProcessorManager), we do not enqueue the entry URL
+        // so that the queue reflects only discovered subpage links.
+        if (processorManager != null) {
+            linkQueue.enqueue(start);
+        }
 
         while (!frontier.isEmpty()) {
             UrlDepth current = frontier.poll();
@@ -129,6 +143,25 @@ public class CrawlerService {
                 // Continue traversal if not yet visited and within depth limit
                 if (visited.add(normalized)) {
                     frontier.add(new UrlDepth(normalized, current.depth + 1));
+                }
+            }
+        }
+
+        // After enqueuing links, optionally start processors to consume the queue
+        if (processorManager != null) {
+            if (processorManager.isRunning()) {
+                log.debug("ProcessorManager is already running; skip starting from crawl()");
+            } else {
+                int workers = workerCount;
+                Consumer<WebPageContent> sink = content -> {
+                    if (content != null) {
+                        log.debug("Sink consumed page: url={}, status={}", content.getUrl(), content.getStatus());
+                    }
+                };
+                processorManager.start(workers, linkQueue, properties, sink);
+                log.debug("ProcessorManager started with workers={}, waitForCompletion={}", workers, waitForCompletion);
+                if (waitForCompletion) {
+                    processorManager.awaitAll(null); // wait indefinitely; awaitAll handles shutdown/state
                 }
             }
         }

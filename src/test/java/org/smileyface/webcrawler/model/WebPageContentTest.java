@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 class WebPageContentTest {
 
@@ -18,8 +18,8 @@ class WebPageContentTest {
         String h1Again = WebPageContent.computeHash(url, content1);
         String h2 = WebPageContent.computeHash(url, content2);
 
-        assertEquals(h1, h1Again, "Hash should be deterministic for same inputs");
-        assertNotEquals(h1, h2, "Hash should change when content changes");
+        assertThat(h1Again).as("Hash should be deterministic for same inputs").isEqualTo(h1);
+        assertThat(h2).as("Hash should change when content changes").isNotEqualTo(h1);
     }
 
     @Test
@@ -33,7 +33,7 @@ class WebPageContentTest {
                 "text/html", "en", List.of(), "this-will-be-ignored"
         );
 
-        assertEquals(WebPageContent.computeHash(url, content), doc.getHash());
+        assertThat(doc.getHash()).isEqualTo(WebPageContent.computeHash(url, content));
     }
 
     @Test
@@ -42,17 +42,17 @@ class WebPageContentTest {
         doc.setUrl("https://example.com/y");
         doc.setContents(List.of("A"));
         String h1 = doc.getHash();
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), doc.getContents()), h1);
+        assertThat(h1).isEqualTo(WebPageContent.computeHash(doc.getUrl(), doc.getContents()));
 
         doc.setContents(List.of("B"));
         String h2 = doc.getHash();
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), doc.getContents()), h2);
-        assertNotEquals(h1, h2, "Changing content should change hash");
+        assertThat(h2).isEqualTo(WebPageContent.computeHash(doc.getUrl(), doc.getContents()));
+        assertThat(h2).as("Changing content should change hash").isNotEqualTo(h1);
 
         doc.setUrl("https://example.com/z");
         String h3 = doc.getHash();
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), doc.getContents()), h3);
-        assertNotEquals(h2, h3, "Changing URL should change hash");
+        assertThat(h3).isEqualTo(WebPageContent.computeHash(doc.getUrl(), doc.getContents()));
+        assertThat(h3).as("Changing URL should change hash").isNotEqualTo(h2);
     }
 
     @Test
@@ -63,9 +63,9 @@ class WebPageContentTest {
         String c = WebPageContent.computeHash("", (String) null);
         String d = WebPageContent.computeHash(null, "");
 
-        assertEquals(a, b);
-        assertEquals(b, c);
-        assertEquals(c, d);
+        assertThat(b).isEqualTo(a);
+        assertThat(c).isEqualTo(b);
+        assertThat(d).isEqualTo(c);
 
         // List-based variant should be equivalent when contents are empty or null
         String la = WebPageContent.computeHash(null, (java.util.List<String>) null);
@@ -73,11 +73,11 @@ class WebPageContentTest {
         String lc = WebPageContent.computeHash("", (java.util.List<String>) null);
         String ld = WebPageContent.computeHash(null, java.util.List.of());
 
-        assertEquals(la, lb);
-        assertEquals(lb, lc);
-        assertEquals(lc, ld);
+        assertThat(lb).isEqualTo(la);
+        assertThat(lc).isEqualTo(lb);
+        assertThat(ld).isEqualTo(lc);
         // And equal to the string-based empty content hash
-        assertEquals(a, la);
+        assertThat(la).isEqualTo(a);
     }
 
     @Test
@@ -90,8 +90,8 @@ class WebPageContentTest {
         doc.addContents("B");
 
         String h2 = doc.getHash();
-        assertNotEquals(h1, h2, "Hash should change after adding a content segment");
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), doc.getContents()), h2);
+        assertThat(h2).as("Hash should change after adding a content segment").isNotEqualTo(h1);
+        assertThat(h2).isEqualTo(WebPageContent.computeHash(doc.getUrl(), doc.getContents()));
     }
 
     @Test
@@ -103,13 +103,90 @@ class WebPageContentTest {
 
         doc.addContents(List.of("two", "three"));
         String h2 = doc.getHash();
-        assertNotEquals(h1, h2, "Hash should change after adding multiple content segments");
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), doc.getContents()), h2);
+        assertThat(h2).as("Hash should change after adding multiple content segments").isNotEqualTo(h1);
+        assertThat(h2).isEqualTo(WebPageContent.computeHash(doc.getUrl(), doc.getContents()));
 
         // Empty list should be a no-op and not change the hash
         doc.addContents(List.of());
         String h3 = doc.getHash();
-        assertEquals(h2, h3, "Adding an empty list should not change the hash");
+        assertThat(h3).as("Adding an empty list should not change the hash").isEqualTo(h2);
+    }
+
+    @Test
+    void setContents_recomputesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len1");
+
+        // null -> length 0
+        doc.setContents(null);
+        assertThat(doc.getContentLength()).isEqualTo(0);
+
+        // empty list -> length 0
+        doc.setContents(List.of());
+        assertThat(doc.getContentLength()).isEqualTo(0);
+
+        // mixed list with nulls and empty strings
+        doc.setContents(java.util.Arrays.asList("abc", "de", null, ""));
+        assertThat(doc.getContentLength()).isEqualTo(5); // 3 + 2 + 0 + 0
+    }
+
+    @Test
+    void addContents_string_updatesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len2");
+        doc.setContents(List.of("A")); // length = 1
+        assertThat(doc.getContentLength()).isEqualTo(1);
+
+        doc.addContents("BC"); // +2 -> 3
+        assertThat(doc.getContentLength()).isEqualTo(3);
+
+        doc.addContents((String) null); // +0 -> 3
+        assertThat(doc.getContentLength()).isEqualTo(3);
+
+        doc.addContents(""); // +0 -> 3
+        assertThat(doc.getContentLength()).isEqualTo(3);
+    }
+
+    @Test
+    void addContents_list_updatesContentLength_andEmptyIsNoOp() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len3");
+        doc.setContents(List.of("x")); // length = 1
+        assertThat(doc.getContentLength()).isEqualTo(1);
+
+        doc.addContents(java.util.Arrays.asList("yy", "zzz", null, "")); // +2 +3 +0 +0 -> 6
+        assertThat(doc.getContentLength()).isEqualTo(6);
+
+        doc.addContents(List.of()); // no-op
+        assertThat(doc.getContentLength()).isEqualTo(6);
+    }
+
+    @Test
+    void updateContents_index_recomputesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len4");
+        doc.setContents(List.of("a", "bbb")); // length = 4
+        assertThat(doc.getContentLength()).isEqualTo(4);
+
+        doc.updateContents(10, "cc"); // becomes ["cc"] -> length = 2
+        assertThat(doc.getContentLength()).isEqualTo(2);
+
+        doc.updateContents(0, null); // becomes [null] -> length = 0
+        assertThat(doc.getContentLength()).isEqualTo(0);
+    }
+
+    @Test
+    void updateContents_list_recomputesContentLength() {
+        WebPageContent doc = new WebPageContent();
+        doc.setUrl("https://example.com/len5");
+        doc.setContents(List.of("aa")); // length = 2
+        assertThat(doc.getContentLength()).isEqualTo(2);
+
+        doc.updateContents(java.util.Arrays.asList("b", "ccc", "")); // 1 + 3 + 0 = 4
+        assertThat(doc.getContentLength()).isEqualTo(4);
+
+        doc.updateContents(null); // cleared -> 0
+        assertThat(doc.getContentLength()).isEqualTo(0);
     }
 
     @Test
@@ -123,9 +200,9 @@ class WebPageContentTest {
         doc.updateContents(newContents);
 
         String h2 = doc.getHash();
-        assertNotEquals(h1, h2, "Hash should change after replacing contents");
-        assertEquals(newContents, doc.getContents(), "Contents should be replaced by updateContents(List)");
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), doc.getContents()), h2);
+        assertThat(h2).as("Hash should change after replacing contents").isNotEqualTo(h1);
+        assertThat(doc.getContents()).as("Contents should be replaced by updateContents(List)").isEqualTo(newContents);
+        assertThat(h2).isEqualTo(WebPageContent.computeHash(doc.getUrl(), doc.getContents()));
     }
 
     @Test
@@ -135,12 +212,12 @@ class WebPageContentTest {
         doc.setContents(List.of("old1", "old2"));
         String before = doc.getHash();
 
-        doc.updateContents(5, "only"); // index is ignored by spec
+        doc.updateContents(5, "only"); // hash ignores index
 
         List<String> expected = List.of("only");
-        assertEquals(expected, doc.getContents(), "Contents should be overridden to a single element");
-        assertNotEquals(before, doc.getHash(), "Hash should change after overriding contents");
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), expected), doc.getHash());
+        assertThat(doc.getContents()).as("Contents should be overridden to a single element").isEqualTo(expected);
+        assertThat(doc.getHash()).as("Hash should change after overriding contents").isNotEqualTo(before);
+        assertThat(doc.getHash()).isEqualTo(WebPageContent.computeHash(doc.getUrl(), expected));
     }
 
     @Test
@@ -159,35 +236,33 @@ class WebPageContentTest {
         doc.setCrawlDepth(2);
         doc.setTitle("Hello");
         doc.setDescription("Desc");
-        doc.setContentLength(42);
         doc.setContentType("text/html");
         doc.setLanguage("en");
 
-        assertEquals("id-123", doc.getId());
-        assertEquals("https://example.com/", doc.getUrl());
-        assertEquals("example.com", doc.getDomain());
-        assertEquals(now, doc.getCrawlTimestamp());
-        assertEquals(CrawlStatus.OK, doc.getStatus());
-        assertEquals(200, doc.getHttpStatus());
-        assertEquals(321L, doc.getFetchDurationMs());
-        assertEquals(2, doc.getCrawlDepth());
-        assertEquals("Hello", doc.getTitle());
-        assertEquals("Desc", doc.getDescription());
-        assertEquals(42, doc.getContentLength());
-        assertEquals("text/html", doc.getContentType());
-        assertEquals("en", doc.getLanguage());
+        assertThat(doc.getId()).isEqualTo("id-123");
+        assertThat(doc.getUrl()).isEqualTo("https://example.com/");
+        assertThat(doc.getDomain()).isEqualTo("example.com");
+        assertThat(doc.getCrawlTimestamp()).isEqualTo(now);
+        assertThat(doc.getStatus()).isEqualTo(CrawlStatus.OK);
+        assertThat(doc.getHttpStatus()).isEqualTo(200);
+        assertThat(doc.getFetchDurationMs()).isEqualTo(321L);
+        assertThat(doc.getCrawlDepth()).isEqualTo(2);
+        assertThat(doc.getTitle()).isEqualTo("Hello");
+        assertThat(doc.getDescription()).isEqualTo("Desc");
+        assertThat(doc.getContentType()).isEqualTo("text/html");
+        assertThat(doc.getLanguage()).isEqualTo("en");
 
         // Defensive copy on setContents
         java.util.ArrayList<String> contentsSrc = new java.util.ArrayList<>(List.of("a", "b"));
         doc.setContents(contentsSrc);
         contentsSrc.add("mutate");
-        assertEquals(List.of("a", "b"), doc.getContents(), "Internal contents should not reflect external list mutations");
+        assertThat(doc.getContents()).as("Internal contents should not reflect external list mutations").isEqualTo(List.of("a", "b"));
 
         // Defensive copy on setOutLinks
         java.util.ArrayList<String> outLinksSrc = new java.util.ArrayList<>(List.of("l1", "l2"));
         doc.setOutLinks(outLinksSrc);
         outLinksSrc.add("l3");
-        assertEquals(List.of("l1", "l2"), doc.getOutLinks(), "Internal outLinks should not reflect external list mutations");
+        assertThat(doc.getOutLinks()).as("Internal outLinks should not reflect external list mutations").isEqualTo(List.of("l1", "l2"));
     }
 
     @Test
@@ -205,9 +280,9 @@ class WebPageContentTest {
         contents.add("z");
         outLinks.add("c");
 
-        assertEquals(List.of("x", "y"), doc.getContents(), "Constructor must defensively copy contents");
-        assertEquals(List.of("a", "b"), doc.getOutLinks(), "Constructor must defensively copy outLinks");
-        assertEquals(WebPageContent.computeHash(url, List.of("x", "y")), doc.getHash(), "Hash must be derived from url+contents");
+        assertThat(doc.getContents()).as("Constructor must defensively copy contents").isEqualTo(List.of("x", "y"));
+        assertThat(doc.getOutLinks()).as("Constructor must defensively copy outLinks").isEqualTo(List.of("a", "b"));
+        assertThat(doc.getHash()).as("Hash must be derived from url+contents").isEqualTo(WebPageContent.computeHash(url, List.of("x", "y")));
     }
 
     @Test
@@ -215,11 +290,11 @@ class WebPageContentTest {
         String url = "u";
         String h1 = WebPageContent.computeHash(url, List.of("a", "b"));
         String h2 = WebPageContent.computeHash(url, List.of("b", "a"));
-        assertNotEquals(h1, h2, "Order of segments should affect the hash");
+        assertThat(h2).as("Order of segments should affect the hash").isNotEqualTo(h1);
 
         String hx = WebPageContent.computeHash(url, List.of("ab", "c"));
         String hy = WebPageContent.computeHash(url, List.of("a", "bc"));
-        assertNotEquals(hx, hy, "Segment separator must avoid concatenation collisions");
+        assertThat(hy).as("Segment separator must avoid concatenation collisions").isNotEqualTo(hx);
     }
 
     @Test
@@ -231,10 +306,10 @@ class WebPageContentTest {
 
         doc.addContents((String) null);
 
-        assertEquals(2, doc.getContents().size());
-        assertNull(doc.getContents().get(1));
-        assertNotEquals(before, doc.getHash());
-        assertEquals(WebPageContent.computeHash(doc.getUrl(), java.util.Arrays.asList("x", null)), doc.getHash());
+        assertThat(doc.getContents().size()).isEqualTo(2);
+        assertThat(doc.getContents().get(1)).isNull();
+        assertThat(doc.getHash()).isNotEqualTo(before);
+        assertThat(doc.getHash()).isEqualTo(WebPageContent.computeHash(doc.getUrl(), java.util.Arrays.asList("x", null)));
     }
 
     @Test
@@ -246,15 +321,15 @@ class WebPageContentTest {
 
         doc.setContents(null);
 
-        assertNull(doc.getContents(), "Contents should become null");
-        assertEquals(expected, doc.getHash(), "Hash should be recomputed with null contents");
+        assertThat(doc.getContents()).as("Contents should become null").isNull();
+        assertThat(doc.getHash()).as("Hash should be recomputed with null contents").isEqualTo(expected);
     }
 
     @Test
     void setOutLinks_nullAllowed() {
         WebPageContent doc = new WebPageContent();
         doc.setOutLinks(null);
-        assertNull(doc.getOutLinks());
+        assertThat(doc.getOutLinks()).isNull();
     }
 
     @Test
@@ -267,28 +342,28 @@ class WebPageContentTest {
         b.setId("X");
         b.setUrl("https://b");
 
-        assertEquals(a, b, "Same id should imply equality even if URLs differ");
-        assertEquals(a.hashCode(), b.hashCode(), "Equal objects must have equal hashCodes");
+        assertThat(b).as("Same id should imply equality even if URLs differ").isEqualTo(a);
+        assertThat(b.hashCode()).as("Equal objects must have equal hashCodes").isEqualTo(a.hashCode());
 
         WebPageContent c = new WebPageContent();
         c.setUrl("https://same");
         WebPageContent d = new WebPageContent();
         d.setUrl("https://same");
-        assertEquals(c, d, "When ids are null, equality should fall back to URL");
-        assertEquals(c.hashCode(), d.hashCode());
+        assertThat(d).as("When ids are null, equality should fall back to URL").isEqualTo(c);
+        assertThat(d.hashCode()).isEqualTo(c.hashCode());
 
         WebPageContent e = new WebPageContent();
         e.setId("E");
         e.setUrl("https://same");
         WebPageContent f = new WebPageContent();
         f.setUrl("https://same");
-        assertNotEquals(e, f, "If either id is present, equality compares ids only");
+        assertThat(f).as("If either id is present, equality compares ids only").isNotEqualTo(e);
 
         WebPageContent g = new WebPageContent();
         g.setId("G1");
         WebPageContent h = new WebPageContent();
         h.setId("G2");
-        assertNotEquals(g, h, "Different non-null ids should not be equal");
+        assertThat(h).as("Different non-null ids should not be equal").isNotEqualTo(g);
     }
 
     @Test
@@ -298,17 +373,17 @@ class WebPageContentTest {
         doc.setUrl("https://example.com/t");
         doc.setContents(List.of("t"));
         String s = doc.toString();
-        assertTrue(s.contains("ID"));
-        assertTrue(s.contains("https://example.com/t"));
-        assertTrue(s.contains(doc.getHash()));
+        assertThat(s).contains("ID");
+        assertThat(s).contains("https://example.com/t");
+        assertThat(s).contains(doc.getHash());
     }
 
     @Test
     void defaultConstructor_initialState() {
         WebPageContent doc = new WebPageContent();
-        assertNull(doc.getHash(), "Hash should be null until url/contents are set");
-        assertNull(doc.getContents());
-        assertNull(doc.getOutLinks());
+        assertThat(doc.getHash()).as("Hash should be null until url/contents are set").isNull();
+        assertThat(doc.getContents()).isNull();
+        assertThat(doc.getOutLinks()).isNull();
     }
 
 }

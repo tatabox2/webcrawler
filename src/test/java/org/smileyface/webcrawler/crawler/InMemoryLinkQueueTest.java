@@ -3,7 +3,7 @@ package org.smileyface.webcrawler.crawler;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
 
 @Disabled("Consolidated into LinkQueueParameterizedTest")
 class InMemoryLinkQueueTest {
@@ -11,7 +11,7 @@ class InMemoryLinkQueueTest {
     @Test
     void emptyQueueDequeueReturnsNull() {
         InMemoryLinkQueue q = new InMemoryLinkQueue();
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @Test
@@ -19,7 +19,7 @@ class InMemoryLinkQueueTest {
         InMemoryLinkQueue q = new InMemoryLinkQueue();
         q.enqueue(null);
         q.enqueue("   ");
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @Test
@@ -30,12 +30,12 @@ class InMemoryLinkQueueTest {
         q.enqueue(url);
         q.enqueue(url); // duplicate
 
-        assertEquals(url, q.deQueue());
-        assertNull(q.deQueue()); // only one instance should be present
+        assertThat(q.deQueue()).isEqualTo(url);
+        assertThat(q.deQueue()).isNull(); // only one instance should be present
 
         // Re-enqueue after dequeue is still ignored due to dedupe set retention
         q.enqueue(url);
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isNull();
     }
 
     @Test
@@ -50,9 +50,9 @@ class InMemoryLinkQueueTest {
         q.enqueue(a); // duplicate should not change order
         q.enqueue(c);
 
-        assertEquals(a, q.deQueue());
-        assertEquals(b, q.deQueue());
-        assertEquals(c, q.deQueue());
-        assertNull(q.deQueue());
+        assertThat(q.deQueue()).isEqualTo(a);
+        assertThat(q.deQueue()).isEqualTo(b);
+        assertThat(q.deQueue()).isEqualTo(c);
+        assertThat(q.deQueue()).isNull();
     }
 }

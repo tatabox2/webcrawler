@@ -2,7 +2,7 @@ package org.smileyface.webcrawler.util;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.*;
 
 class CrawlerUtilsTest {
 
@@ -14,7 +14,7 @@ class CrawlerUtilsTest {
         String input = "<p>This is <b>bold</b> and <i>italic</i> text.</p>";
         String expected = "This is bold and italic text.";
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
     /**
@@ -25,7 +25,7 @@ class CrawlerUtilsTest {
         String input = "This is plain text.";
         String expected = "This is plain text.";
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
     /**
@@ -36,7 +36,7 @@ class CrawlerUtilsTest {
         String input = "";
         String expected = "";
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
     /**
@@ -47,7 +47,7 @@ class CrawlerUtilsTest {
     void testRemoveHtmlTagsWithNullInput() {
         String input = null;
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(null, result);
+        assertThat(result).isNull();
     }
 
     /**
@@ -58,7 +58,7 @@ class CrawlerUtilsTest {
         String input = "<div><span></span></div>";
         String expected = "";
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
     /**
@@ -69,7 +69,7 @@ class CrawlerUtilsTest {
         String input = "<div><p>Nested <span>tag</span> example.</p></div>";
         String expected = "Nested tag example.";
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
     /**
@@ -80,7 +80,7 @@ class CrawlerUtilsTest {
         String input = "<p>Special characters: &amp; &lt; &gt;</p>";
         String expected = "Special characters: &amp; &lt; &gt;";
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
     /**
@@ -91,7 +91,7 @@ class CrawlerUtilsTest {
         String input = "Text with <b>unclosed tags or <i>incorrect nesting</b>";
         String expected = "Text with unclosed tags or incorrect nesting";
         String result = CrawlerUtils.removeHtmlTags(input);
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
 }
