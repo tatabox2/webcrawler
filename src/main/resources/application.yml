@@ -17,9 +17,14 @@ crawler:
   maxDepth: 1
   queue:
     type: "redis"
-  workerCount: 20
+  workerCount: 40
   includePatterns: [ ]
   excludePatterns: [ ]
   userAgent: "SmileyfaceWebCrawler/0.1"
   requestTimeoutMs: 10000
   queueNamespace: "crawler"
+
+# Logging setting
+logging:
+  level:
+    root: INFO

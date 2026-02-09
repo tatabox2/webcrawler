@@ -260,7 +260,7 @@ public class CrawlerProperties {
     private List<ContentRule> buildRules(ContentRulesConfig cfg) {
         List<ContentRule> list = new ArrayList<>();
         if (cfg == null) return list;
-        if (cfg.minCharacter != null && cfg.minCharacter > 0) {
+        if (cfg.minCharacter != null && cfg.minCharacter >= 0) {
             list.add(new MinCharacterRule(cfg.minCharacter));
         }
         if (cfg.tagName != null && !cfg.tagName.isBlank()) {

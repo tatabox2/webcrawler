@@ -5,7 +5,7 @@ crawler:
   queue-namespace: "test"
   queue:
     type: "redis"
-  workerCount: 20
+  workerCount: 40
 
 spring:
   main:
@@ -13,4 +13,7 @@ spring:
 
 logging:
   level:
-    root: DEBUG
+    org:
+      smileyface:
+        webcrawler:
+          elasticsearch: DEBUG

@@ -15,7 +15,6 @@ import org.smileyface.webcrawler.elasticsearch.ElasticContext;
 import org.smileyface.webcrawler.elasticsearch.ElasticRestClient;
 import org.smileyface.webcrawler.model.CrawlStatus;
 import org.smileyface.webcrawler.model.WebPageContent;
-import org.smileyface.webcrawler.config.BeanConfig;
 import org.smileyface.webcrawler.testutil.ElasticsearchTestContainer;
 import org.smileyface.webcrawler.util.CrawlerUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +22,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -37,8 +37,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.*;
 
-@SpringJUnitConfig(classes = {BeanConfig.class,
-        ProcessorManagerTest.TestPropsConfig.class})
+@SpringBootTest
+@ActiveProfiles("test")
 class ProcessorManagerTest {
 
     private HttpServer server;
@@ -60,13 +60,24 @@ class ProcessorManagerTest {
     static class TestPropsConfig {
         @Bean
         @Primary
-        public ElasticContext elasticContext() {
-            return elasticContext;
+        public ElasticContext testElasticContext() {
+            // When running with @SpringBootTest, the static field may not be initialized yet.
+            // Provide a safe default ElasticContext to allow the ApplicationContext to start.
+            if (elasticContext != null) {
+                return elasticContext;
+            }
+            return new ElasticContext("default", "localhost", 9200);
         }
 
         @Bean
         public ProcessorManager processorManager(ElasticContext elasticContext) {
             return new ProcessorManager(elasticContext);
+        }
+
+        @Bean
+        @Primary
+        public LinkQueue testLinkQueue() {
+            return new org.smileyface.webcrawler.crawler.InMemoryLinkQueue();
         }
     }
 
@@ -129,6 +140,12 @@ class ProcessorManagerTest {
         CrawlerProperties props = new CrawlerProperties();
         props.setUserAgent("TestBot/1.0");
         props.setRequestTimeoutMs(5000);
+        props.setMaxDepth(0);
+        int minCharacters = 0;
+        CrawlerProperties.ContentRulesConfig contentRulesConfig = new CrawlerProperties.ContentRulesConfig(minCharacters, "", "");
+        CrawlerProperties.PageConfig pageConfig = new CrawlerProperties.PageConfig("^http://localhost.*", contentRulesConfig);
+        pageConfig.matchAll = true;
+        props.addPageConfig(pageConfig);
         String indexName = null;
         if (dockerAvailable) {
             // Use prefix and derive full index name with tenant id to match WebPageProcessor.getIndexName()
@@ -190,6 +207,10 @@ class ProcessorManagerTest {
         CrawlerProperties props = new CrawlerProperties();
         props.setUserAgent("TestBot/1.0");
         props.setRequestTimeoutMs(5000);
+        int minCharacters = 600;
+        CrawlerProperties.ContentRulesConfig contentRulesConfig = new CrawlerProperties.ContentRulesConfig(minCharacters, "", "");
+        CrawlerProperties.PageConfig pageConfig = new CrawlerProperties.PageConfig("^http://localhost.*", contentRulesConfig);
+        props.addPageConfig(pageConfig);
         String indexName = null;
         if (dockerAvailable) {
             indexName = CrawlerUtils.getIndexName(props, elasticContext);

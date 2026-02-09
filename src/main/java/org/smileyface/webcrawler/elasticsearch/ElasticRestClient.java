@@ -42,10 +42,11 @@ public class ElasticRestClient {
      */
     public ElasticRestClient(ElasticContext context) {
         if (context == null) {
+            log.error("ElasticContext must not be null");
             throw new IllegalArgumentException("ElasticContext must not be null");
         }
 
-        log.debug("ElasticRestClient initializing on {}:{}", context.getAddress(), context.getPort());
+        log.info("ElasticRestClient initializing on {}:{}", context.getAddress(), context.getPort());
         RestClient lowLevel = RestClient.builder(new HttpHost(context.getAddress(), context.getPort(), "http"))
                 .build();
         ElasticsearchTransport transport = new RestClientTransport(lowLevel, new JacksonJsonpMapper());
@@ -63,9 +64,10 @@ public class ElasticRestClient {
             boolean exists = client.indices().exists(ExistsRequest.of(b -> b.index(indexName))).value();
             if (exists) return false;
             client.indices().create(CreateIndexRequest.of(b -> b.index(indexName)));
-            log.info("Index {} created", indexName);
+            log.debug("Index {} created", indexName);
             return true;
         } catch (ElasticsearchException e) {
+            log.error("Failed to create index {}", indexName, e);
             throw e;
         }
     }
@@ -79,9 +81,10 @@ public class ElasticRestClient {
             boolean exists = client.indices().exists(ExistsRequest.of(b -> b.index(indexName))).value();
             if (exists) return false;
             client.indices().create(b -> b.index(indexName).withJson(new StringReader(jsonBody)));
-            log.info("Index {} created with settings/mappings: {}", indexName, jsonBody);
+            log.debug("Index {} created with settings/mappings: {}", indexName, jsonBody);
             return true;
         } catch (ElasticsearchException e) {
+            log.error("Failed to create index {}", indexName, e);
             throw e;
         }
     }
@@ -95,8 +98,9 @@ public class ElasticRestClient {
                     .index(indexName)
                     .withJson(new StringReader(settingsJson))
             ));
-            log.info("Index {} updated with settings: {}", indexName, settingsJson);
+            log.debug("Index {} updated with settings: {}", indexName, settingsJson);
         } catch (ElasticsearchException e) {
+            log.error("Failed to update index {}", indexName, e);
             throw e;
         }
     }
@@ -110,9 +114,10 @@ public class ElasticRestClient {
             boolean exists = client.indices().exists(ExistsRequest.of(b -> b.index(indexName))).value();
             if (!exists) return false;
             client.indices().delete(DeleteIndexRequest.of(b -> b.index(indexName)));
-            log.info("Index {} deleted", indexName);
+            log.debug("Index {} deleted", indexName);
             return true;
         } catch (ElasticsearchException e) {
+            log.error("Failed to delete index {}", indexName, e);
             throw e;
         }
     }
@@ -125,8 +130,9 @@ public class ElasticRestClient {
     public void createAlias(String indexName, String aliasName) throws IOException {
         try {
             client.indices().putAlias(PutAliasRequest.of(b -> b.index(indexName).name(aliasName)));
-            log.info("Alias {} created", aliasName);
+            log.debug("Alias {} created", aliasName);
         } catch (ElasticsearchException e) {
+            log.error("Failed to create alias {} for index {}", aliasName, indexName, e);
             throw e;
         }
     }
@@ -137,8 +143,9 @@ public class ElasticRestClient {
     public void deleteAlias(String indexName, String aliasName) throws IOException {
         try {
             client.indices().deleteAlias(DeleteAliasRequest.of(b -> b.index(indexName).name(aliasName)));
-            log.info("Alias {} deleted", aliasName);
+            log.debug("Alias {} deleted", aliasName);
         } catch (ElasticsearchException e) {
+            log.error("Failed to delete alias {} for index {}", aliasName, indexName, e);
             throw e;
         }
     }
@@ -159,9 +166,10 @@ public class ElasticRestClient {
                         .name(templateName)
                         .withJson(new StringReader(templateJson))
                 );
-                log.info("Template {} updated", templateName);
+                log.debug("Template {} updated", templateName);
             }
         } catch (ElasticsearchException e) {
+            log.error("Failed to create template {}", templateName, e);
             throw e;
         }
     }
@@ -172,8 +180,9 @@ public class ElasticRestClient {
     public void deleteTemplate(String templateName) throws IOException {
         try {
             client.indices().deleteIndexTemplate(DeleteIndexTemplateRequest.of(b -> b.name(templateName)));
-            log.info("Template {} deleted", templateName);
+            log.debug("Template {} deleted", templateName);
         } catch (ElasticsearchException e) {
+            log.error("Failed to delete template {}", templateName, e);
             throw e;
         }
     }
@@ -201,9 +210,10 @@ public class ElasticRestClient {
             IndexResponse resp = (id == null || id.isBlank())
                     ? client.index(b -> b.index(indexName).document(document))
                     : client.index(b -> b.index(indexName).id(id).document(document));
-            log.info("Index with id: {}, document: {}", resp.id(), document);
+            log.debug("Index with id: {}, document: {}", resp.id(), document);
             return resp.id();
         } catch (ElasticsearchException e) {
+            log.error("Failed to index document {} into index {}", document, indexName, e);
             throw e;
         }
     }
@@ -222,14 +232,15 @@ public class ElasticRestClient {
         try {
             var resp = client.get(b -> b.index(indexName).id(id), WebPageContent.class);
             if(resp == null) {
-                log.info("Document with id: {} not found", id);
+                log.debug("Document with id: {} not found", id);
                 return null;
             } else {
                 resp.source().setId(resp.id());
-                log.info("get document with id: {}", resp.id());
+                log.debug("get document with id: {}", resp.id());
                 return resp.source();
             }
         } catch (ElasticsearchException e) {
+            log.error("Failed to get document with id {} from index {}", id, indexName, e);
             throw e;
         }
     }
@@ -258,6 +269,7 @@ public class ElasticRestClient {
             }
             return out;
         } catch (ElasticsearchException e) {
+            log.error("Failed to search index {}", indexName, e);
             throw e;
         }
     }
