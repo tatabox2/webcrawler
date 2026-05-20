@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Manages a set of WebPageProcessor workers running on virtual threads.
@@ -110,11 +111,7 @@ public class ProcessorManager {
     }
 
     public List<ProcessorStatus> getStatuses() {
-        List<ProcessorStatus> list = new ArrayList<>(processors.size());
-        for (WebPageProcessor p : processors) {
-            list.add(p.getStatus());
-        }
-        return list;
+        return processors.stream().map(WebPageProcessor::getStatus).collect(Collectors.toList());
     }
 
     public boolean isRunning() {

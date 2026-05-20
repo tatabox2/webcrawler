@@ -12,6 +12,8 @@ import org.smileyface.webcrawler.crawler.LinkQueue;
 import org.smileyface.webcrawler.elasticsearch.ElasticContext;
 import org.smileyface.webcrawler.processor.ProcessorManager;
 import org.smileyface.webcrawler.model.WebPageContent;
+import org.smileyface.webcrawler.processor.ProcessorStatus;
+import org.smileyface.webcrawler.processor.ProcessorState;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.function.Consumer;
 
@@ -42,6 +46,8 @@ public class CrawlerService {
     private final CrawlerProperties properties;
     private ProcessorManager processorManager; // optional when created manually in tests
     private ElasticContext elasticContext;     // instantiated from application.yml when using Spring
+    // Track which entry URLs have been started to avoid duplicate triggers and to report progress
+    private final Set<String> startedEntryUrls = ConcurrentHashMap.newKeySet();
     
     // Inject explicit worker count from application properties if provided.
     @Value("${crawler.workerCount:15}")
@@ -97,6 +103,9 @@ public class CrawlerService {
             log.warn("Invalid entry URL: {}", entryUrl);
             return;
         }
+
+        // Mark this entry URL as started (idempotent)
+        startedEntryUrls.add(start);
 
         int maxDepth = Math.max(0, properties.getMaxDepth());
         List<Pattern> includes = compilePatterns(properties.getIncludeUrlPatterns());
@@ -164,6 +173,99 @@ public class CrawlerService {
                     processorManager.awaitAll(null); // wait indefinitely; awaitAll handles shutdown/state
                 }
             }
+        }
+    }
+
+    /**
+     * Start a crawl in a background thread if it has not been started before. This call is
+     * non-blocking and returns immediately.
+     *
+     * @param entryUrl starting URL to crawl
+     * @return true if a new crawl was triggered; false if it was already started or invalid
+     */
+    public boolean startCrawlAsync(String entryUrl) {
+        String start = normalizeUrl(entryUrl);
+        if (start == null) {
+            return false;
+        }
+        // If already started, do nothing
+        if (startedEntryUrls.contains(start)) {
+            return false;
+        }
+        log.info("Starting async crawl of {}", entryUrl);
+        crawl(start, false);
+        // Start a lightweight monitor thread to watch progress for this URL's host
+        // and remove it from startedEntryUrls when processing is COMPLETED.
+        Thread monitor = new Thread(() -> {
+            try {
+                while (true) {
+                    ProcessorStatus status = getProgressStatusesFor(start);
+                    if (status != null && (status.getState() == ProcessorState.COMPLETED ||
+                            status.getState() == ProcessorState.ERROR ||
+                            status.getState() == ProcessorState.STOPPED)) {
+                        startedEntryUrls.remove(start);
+                        log.info("Crawl status {} for {}. Removed from startedEntryUrls.", status.getState(), entryUrl);
+                        break;
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("Monitor thread encountered an error for {}: {}", entryUrl, ex.toString());
+            }
+        }, "crawl-monitor-" + Math.abs(start.hashCode()));
+        monitor.setDaemon(true);
+        monitor.start();
+        return true;
+    }
+
+    /**
+     * Return whether the given entry URL has been started already (normalized).
+     */
+    public boolean hasStarted(String entryUrl) {
+        String start = normalizeUrl(entryUrl);
+        return start != null && startedEntryUrls.contains(start);
+    }
+
+    /**
+     * Expose current processor statuses for progress reporting.
+     */
+    public List<org.smileyface.webcrawler.processor.ProcessorStatus> getProgressStatuses() {
+        if (processorManager == null) return Collections.emptyList();
+        return processorManager.getStatuses();
+    }
+
+    /**
+     * Return processor statuses filtered to those working on the same host as the given URL.
+     * If the URL is invalid or processorManager is not available, returns an empty list.
+     */
+    public ProcessorStatus getProgressStatusesFor(String entryUrl) {
+        if (processorManager == null || entryUrl == null)
+            return null;
+        String normalized = normalizeUrl(entryUrl);
+        if (normalized == null) return null;
+        String targetHost = hostOf(normalized);
+        if (targetHost == null)
+            return null;
+        return processorManager.getStatuses().stream()
+                .filter(s -> {
+                    String last = s.getLastUrl();
+                    if (last == null) return false;
+                    String h = hostOf(last);
+                    return targetHost.equalsIgnoreCase(h);
+                }).findFirst().orElse(null);
+    }
+
+    private String hostOf(String url) {
+        try {
+            URI u = new URI(url);
+            return u.getHost();
+        } catch (Exception e) {
+            return null;
         }
     }
 

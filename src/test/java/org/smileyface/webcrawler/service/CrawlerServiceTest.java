@@ -30,7 +30,6 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -152,7 +151,7 @@ class CrawlerServiceTest {
     }
 
     @AfterAll
-    static void stopContainers() {
+    static void stopContainers() throws IOException {
         if (redisContainer != null) {
             try {
                 redisContainer.stop();
@@ -160,7 +159,15 @@ class CrawlerServiceTest {
                 redisContainer = null;
             }
         }
+
+        if (lowLevel != null) {
+            lowLevel.close();
+            lowLevel = null;
+        }
         // Keep Elasticsearch container lifecycle as-is; it will be cleaned by JVM shutdown if not explicitly stopped
+        if (dockerAvailable) {
+            ElasticsearchTestContainer.stop();
+        }
     }
 
     @BeforeEach
@@ -170,7 +177,7 @@ class CrawlerServiceTest {
 
     private static Stream<Arguments> testDataProvider() {
         return Stream.of(
-                    // Arguments.arguments( "planet-x.html", ".*\\.nasa.gov/.*"),
+                    Arguments.arguments( "planet-x.html", ".*\\.nasa.gov/.*"),
                     Arguments.arguments("t23389-topic.html", ".*\\.666forum.com/.*"),
                     Arguments.arguments("t18300-topic.html", ".*\\.666forum.com/.*")
                 );
@@ -320,7 +327,7 @@ class CrawlerServiceTest {
 
         // Only accept localhost links so we don't enqueue any external URLs from the sample HTML
         crawlerProperties.setIncludeUrlPatterns(List.of(includedPattern));
-        crawlerProperties.setMaxDepth(1);
+        crawlerProperties.setMaxDepth(0);
 
         crawler.crawl(base, true);
 
